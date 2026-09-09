@@ -1,35 +1,39 @@
 #pragma once
-
 #include <string>
-#include <cstdlib>
-#include <fstream>
-#include <iostream>
+#include <vector>
+#include <map>
+#include "Dependencies/glew.h"
 
-#include "Dependencies\glew.h"
+struct Point { float x, y; };
+struct Color { float r, g, b, a; };
+enum class Material { Plain, Grass, Dirt, Stone, Wood, Roof, Water, Sprite, Plaster, Foliage };
 
 class Renderer
 {
 public:
-	Renderer(int windowSizeX, int windowSizeY);
+	Renderer(int width, int height);
 	~Renderer();
-
-	bool IsInitialized();
-	void DrawSolidRect(float x, float y, float z, float size, float r, float g, float b, float a);
-
+	bool IsInitialized() const { return m_Initialized; }
+	void Begin(int width, int height, float time, Point worldOrigin);
+	void FinishWorld(bool postprocess);
+	void Polygon(const std::vector<Point>& points, Color color, Material material = Material::Plain, const std::vector<Point>& uv = {});
+	void Rect(float x, float y, float w, float h, Color color);
+	void Ellipse(float x, float y, float rx, float ry, Color color);
+	void SoftEllipse(float x, float y, float rx, float ry, Color color);
+	void Character(float x, float y, int facing, int frame, Color coat);
+	void Flush();
+	void Text(float x, float y, const std::wstring& text, Color color);
 private:
-	void Initialize(int windowSizeX, int windowSizeY);
-	bool ReadFile(char* filename, std::string *target);
-	void AddShader(GLuint ShaderProgram, const char* pShaderText, GLenum ShaderType);
-	GLuint CompileShaders(char* filenameVS, char* filenameFS);
-	void CreateVertexBufferObjects();
-	void GetGLPosition(float x, float y, float *newX, float *newY);
-
-	bool m_Initialized = false;
-	
-	unsigned int m_WindowSizeX = 0;
-	unsigned int m_WindowSizeY = 0;
-
-	GLuint m_VBORect = 0;
-	GLuint m_SolidRectShader = 0;
+	struct Vertex { float x,y,r,g,b,a,material,u,v; };
+	void ResizeTargets();
+	GLuint m_Program=0,m_Post=0,m_Buffer=0,m_Array=0,m_Atlas=0;
+	GLuint m_Framebuffer=0,m_Scene=0;
+	GLint m_Viewport=-1,m_Time=-1,m_Origin=-1,m_PostScene=-1,m_PostTexel=-1,m_PostEnabled=-1;
+	int m_Width,m_Height;
+	float m_Elapsed=0;
+	Point m_WorldOrigin={0,0};
+	bool m_Initialized=false,m_TargetsReady=false;
+	std::vector<Vertex> m_Vertices;
+	std::map<wchar_t,GLuint> m_Glyphs;
+	void* m_Font=nullptr;
 };
-
