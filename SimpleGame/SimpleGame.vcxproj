@@ -156,12 +156,18 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Renderer.h" />
+    <ClInclude Include="AssetCache.h" />
+    <ClInclude Include="LevelModels.h" />
+    <ClInclude Include="FirstLevel.h" />
     <ClInclude Include="CharacterSprites.h" />
     <ClInclude Include="stdafx.h" />
     <ClInclude Include="targetver.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Renderer.cpp" />
+    <ClCompile Include="AssetCache.cpp" />
+    <ClCompile Include="LevelModels.cpp" />
+    <ClCompile Include="FirstLevel.cpp" />
     <ClCompile Include="CharacterSprites.cpp" />
     <ClCompile Include="SimpleGame.cpp" />
     <ClCompile Include="stdafx.cpp">
