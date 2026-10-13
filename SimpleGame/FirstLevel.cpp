@@ -1,5 +1,6 @@
 #include "stdafx.h"
 #include "FirstLevel.h"
+#include "MonitorState.h"
 #include <algorithm>
 #include <cmath>
 #include <queue>
@@ -15,6 +16,49 @@ namespace
 	const Point Camp = {7, 7};
 	const Color Cream = {.94f, .90f, .76f, 1};
 	const Color Gold = {.98f, .73f, .36f, 1};
+}
+
+FirstLevel::FirstLevel()
+    : m_PlayerActor(m_Scene.World().AddChild("Player", Camp)),
+      m_StaticActors(m_Scene.World().AddChild("Terrain")),
+      m_EnemyActors(m_Scene.World().AddChild("Enemies")),
+      m_DropActors(m_Scene.World().AddChild("Drops")), m_Player(m_PlayerActor.Position())
+{
+	m_Scene.UI().AddChild("HUD").SetDraw(
+	    [this](Actor&, Renderer& renderer)
+	    {
+		    DrawHud(renderer, m_Width, m_Height, m_Paused);
+	    });
+}
+
+const FirstLevel::EnemyStats& FirstLevel::Stats(EnemyKind kind)
+{
+	static const EnemyStats stats[] = {
+	    {24, 5, 15, 3, 1.65f, 1.5f, .5f, 1.2f, {.3f, .6f, .3f, 1}},
+	    {36, 7, 22, 5, 2.2f, 1.7f, .65f, 1.4f, {.62f, .25f, .18f, 1}},
+	    {28, 6, 20, 5, 1.9f, 8.f, .9f, 2.f, {.35f, .48f, .22f, 1}},
+	    {32, 6, 26, 7, 1.5f, 7.f, 1.15f, 2.4f, {.56f, .3f, .70f, 1}}};
+	return stats[static_cast<int>(kind)];
+}
+
+void FirstLevel::CaptureMonitorState(MonitorSnapshot& snapshot) const
+{
+	snapshot.huntingLoaded = m_Initialized;
+	const char* kinds[] = {"slime", "bandit", "archer", "priest"};
+	const char* names[] = {"슬라임", "도적", "궁수", "타락한 사제"};
+	for (size_t i = 0; i < snapshot.mobs.size(); ++i)
+	{
+		snapshot.mobs[i] = {};
+		snapshot.mobs[i].kind = kinds[i];
+		snapshot.mobs[i].name = names[i];
+	}
+	for (const auto& enemy : m_Enemies)
+	{
+		auto& count = snapshot.mobs[static_cast<size_t>(enemy.kind)];
+		++count.total;
+		if (enemy.hp > 0)
+			++count.alive;
+	}
 }
 
 int FirstLevel::AttackPower() const
@@ -85,6 +129,77 @@ bool FirstLevel::Connected() const
 	return count == std::count(m_Tiles.begin(), m_Tiles.end(), Tile::Ground);
 }
 
+bool FirstLevel::NeighborPathsConnected(int cell) const
+{
+	// Generate removes an interior cell from a connected map with blocked borders.
+	// Ring bits run clockwise from north; even bits are the four ground neighbors.
+	const Tile* tiles = m_Tiles.data();
+	const int ring[] = {
+	    -Columns, -Columns + 1, 1, Columns + 1, Columns, Columns - 1, -1, -Columns - 1};
+	unsigned ground = 0;
+	for (int i = 0; i < 8; ++i)
+		if (tiles[cell + ring[i]] == Tile::Ground)
+			ground |= 1u << i;
+
+	unsigned targets = ground & 0x55u;
+	unsigned reached = targets & (~targets + 1u);
+	for (;;)
+	{
+		unsigned adjacent = (reached << 1) | (reached >> 7) | (reached >> 1) | (reached << 7);
+		unsigned expanded = (reached | adjacent) & ground;
+		if (expanded == reached)
+			break;
+		reached = expanded;
+	}
+	if ((reached & targets) == targets)
+		return true;
+
+	// A removed cell can only separate its ground neighbors; stop once they meet.
+	int goals[4], goalCount = 0, start = -1, fewestNeighbors = 5;
+	const int offsets[] = {-Columns, 1, Columns, -1};
+	for (int offset : offsets)
+	{
+		int neighbor = cell + offset;
+		if (tiles[neighbor] != Tile::Ground)
+			continue;
+		goals[goalCount++] = neighbor;
+		int degree = 0;
+		for (int next : offsets)
+			degree += tiles[neighbor + next] == Tile::Ground;
+		if (degree < fewestNeighbors)
+		{
+			fewestNeighbors = degree;
+			start = neighbor;
+		}
+	}
+
+	bool seen[Columns * Rows] = {};
+	int pending[Columns * Rows];
+	int read = 0, write = 0, found = 0;
+	pending[write++] = start;
+	seen[start] = true;
+	while (read < write)
+	{
+		int current = pending[read++];
+		for (int i = 0; i < goalCount; ++i)
+			found += current == goals[i];
+		if (found == goalCount)
+			return true;
+		for (int offset : offsets)
+		{
+			int next = current + offset;
+			if (next < 0 || next >= Columns * Rows || seen[next] || tiles[next] != Tile::Ground ||
+			    std::abs(next % Columns - current % Columns) +
+			            std::abs(next / Columns - current / Columns) !=
+			        1)
+				continue;
+			seen[next] = true;
+			pending[write++] = next;
+		}
+	}
+	return false;
+}
+
 void FirstLevel::Generate()
 {
 	m_Tiles.fill(Tile::Ground);
@@ -93,17 +208,18 @@ void FirstLevel::Generate()
 			if (!x || !y || x == Columns - 1 || y == Rows - 1)
 				m_Tiles[y * Columns + x] = Tile::Tree;
 	// Reject every obstacle that would isolate any traversable cell.
-	for (int i = 0; i < 650; ++i)
+	for (int i = 0; i < 2600; ++i)
 	{
 		int x = 1 + Random() % (Columns - 2), y = 1 + Random() % (Rows - 2);
 		int cell = y * Columns + x;
 		if (Distance(Center(cell), Camp) < 9 || m_Tiles[cell] != Tile::Ground)
 			continue;
 		m_Tiles[cell] = static_cast<Tile>(1 + Random() % 3);
-		if (!Connected())
+		if (!NeighborPathsConnected(cell))
 			m_Tiles[cell] = Tile::Ground;
 	}
 	m_Enemies.clear();
+	m_EnemyActors.ClearChildren();
 	std::vector<int> spawnCells;
 	for (int i = 0; i < Columns * Rows; ++i)
 		if (m_Tiles[i] == Tile::Ground && Distance(Center(i), Camp) > 12)
@@ -111,10 +227,23 @@ void FirstLevel::Generate()
 	// Deterministic shuffle; each spawn is a distinct, reachable cell center.
 	for (size_t i = spawnCells.size(); i > 1; --i)
 		std::swap(spawnCells[i - 1], spawnCells[Random() % i]);
-	for (size_t i = 0; i < std::min(size_t(24), spawnCells.size()); ++i)
+	// Three enemies in each 12x10-tile sector: 192 enemies across the expanded map.
+	std::array<int, 64> counts = {};
+	for (int cell : spawnCells)
 	{
-		Point p = Center(spawnCells[i]);
-		m_Enemies.push_back({p, p});
+		int sector = (cell / Columns / 10) * 8 + cell % Columns / 12;
+		if (counts[sector] >= 3)
+			continue;
+		++counts[sector];
+		Point p = Center(cell);
+		EnemyKind kind = static_cast<EnemyKind>(m_Enemies.size() % 4);
+		// The first encounters near camp remain approachable.
+		if (Distance(p, Camp) < 20)
+			kind = EnemyKind::Slime;
+		const char* names[] = {"Slime/", "Bandit/", "Archer/", "Priest/"};
+		Actor& actor = m_EnemyActors.AddChild(
+		    names[static_cast<int>(kind)] + std::to_string(m_Enemies.size()), p);
+		m_Enemies.emplace_back(actor, p, kind);
 	}
 	m_FlowTarget = -1;
 }
@@ -139,6 +268,7 @@ void FirstLevel::Begin(uint32_t seed, bool resetProgress)
 	m_Aim = {.70710678f, .70710678f};
 	m_Facing = 1;
 	m_Drops.clear();
+	m_DropActors.ClearChildren();
 	m_Time = 0;
 	m_AttackCooldown = 0;
 	m_Swing = 0;
@@ -147,8 +277,9 @@ void FirstLevel::Begin(uint32_t seed, bool resetProgress)
 	m_Stats = false;
 	m_Walking = false;
 	Generate();
+	BuildScene();
 	std::cout << "First level seed: " << m_Seed << "\n";
-	Message(L"슬라임을 사냥하고 전리품을 주워 3레벨에 도달하세요.");
+	Message(L"슬라임·도적·궁수·타락한 사제를 사냥하고 전리품을 주워 3레벨에 도달하세요.");
 }
 
 bool FirstLevel::Walkable(Point p) const
@@ -237,8 +368,8 @@ void FirstLevel::Attack()
 		float distance = Distance(enemy.position, m_Player);
 		float facing =
 		    (enemy.position.x - m_Player.x) * m_Aim.x + (enemy.position.y - m_Player.y) * m_Aim.y;
-		if (enemy.hp <= 0 || distance > 2.6f || facing < -.15f * distance ||
-		    !ClearLine(m_Player, enemy.position))
+		if (!enemy.actor.IsEnabled() || enemy.hp <= 0 || distance > 2.6f ||
+		    facing < -.15f * distance || !ClearLine(m_Player, enemy.position))
 			continue;
 		enemy.hp = std::max(0, enemy.hp - AttackPower());
 		enemy.flash = .15f;
@@ -246,9 +377,19 @@ void FirstLevel::Attack()
 		{
 			enemy.respawn = 12;
 			enemy.windup = 0;
-			m_Drops.push_back({enemy.position, 3, 1});
+			enemy.actor.SetVisible(false);
+			if (m_Drops.size() >= 256)
+			{
+				Actor* oldest = m_Drops.front().actor;
+				m_Drops.erase(m_Drops.begin());
+				m_DropActors.RemoveChild(*oldest);
+			}
+			Actor& drop = m_DropActors.AddChild("Loot/" + std::to_string(m_Kills));
+			drop.SetWorldPosition(enemy.position);
+			ModelActor(drop, LevelModel::Loot);
+			m_Drops.push_back({&drop, Stats(enemy.kind).coins, 1});
 			++m_Kills;
-			GainExperience(15);
+			GainExperience(Stats(enemy.kind).experience);
 		}
 	}
 }
@@ -258,18 +399,21 @@ void FirstLevel::Pickup()
 	int picked = 0;
 	for (auto it = m_Drops.begin(); it != m_Drops.end();)
 	{
-		if (Distance(it->position, m_Player) < 2.5f && ClearLine(m_Player, it->position))
+		if (Distance(it->actor->Position(), m_Player) < 2.5f &&
+		    ClearLine(m_Player, it->actor->Position()))
 		{
 			m_Coins += it->coins;
 			m_Shards += it->shards;
 			++picked;
+			Actor* actor = it->actor;
 			it = m_Drops.erase(it);
+			m_DropActors.RemoveChild(*actor);
 		}
 		else
 			++it;
 	}
 	if (picked)
-		Message(L"전리품 획득 · 동전 " + std::to_wstring(m_Coins) + L" · 점액 결정 " +
+		Message(L"전리품 획득 · 동전 " + std::to_wstring(m_Coins) + L" · 탐험 결정 " +
 		        std::to_wstring(m_Shards));
 }
 
@@ -298,11 +442,19 @@ bool FirstLevel::Key(unsigned char key)
 
 void FirstLevel::Step(float dt, const bool* keys)
 {
+	m_Input = keys;
+	m_Scene.Update(dt);
+
+	m_Camera = m_Player;
+}
+
+void FirstLevel::UpdatePlayer(float dt)
+{
 	m_AttackCooldown = std::max(0.f, m_AttackCooldown - dt);
 	m_Swing = std::max(0.f, m_Swing - dt);
 	m_HitCooldown = std::max(0.f, m_HitCooldown - dt);
-	float sx = (keys['d'] ? 1.f : 0) - (keys['a'] ? 1.f : 0);
-	float sy = (keys['s'] ? 1.f : 0) - (keys['w'] ? 1.f : 0);
+	float sx = (m_Input['d'] ? 1.f : 0) - (m_Input['a'] ? 1.f : 0);
+	float sy = (m_Input['s'] ? 1.f : 0) - (m_Input['w'] ? 1.f : 0);
 	float length = std::hypot(sx, sy);
 	if (length > 0)
 	{
@@ -315,77 +467,138 @@ void FirstLevel::Step(float dt, const bool* keys)
 		Move(m_Player, delta);
 		m_Walking = m_Walking || Distance(previous, m_Player) > .0001f;
 	}
-	if (keys[' '] && m_AttackCooldown <= 0)
+	if (m_Input[' '] && m_AttackCooldown <= 0)
 		Attack();
 	if (Cell(m_Player) != m_FlowTarget)
 		RebuildFlow();
-	for (auto& enemy : m_Enemies)
+}
+
+void FirstLevel::UpdateEnemy(Enemy& enemy, float dt)
+{
+	const EnemyStats& stats = Stats(enemy.kind);
+	enemy.moving = false;
+	enemy.glow = std::max(0.f, enemy.glow - dt);
+	enemy.flash = std::max(0.f, enemy.flash - dt);
+	if (enemy.hp <= 0)
 	{
-		enemy.flash = std::max(0.f, enemy.flash - dt);
-		if (enemy.hp <= 0)
+		enemy.respawn -= dt;
+		if (enemy.respawn <= 0 && Distance(m_Player, enemy.home) > 8)
 		{
-			enemy.respawn -= dt;
-			if (enemy.respawn <= 0 && Distance(m_Player, enemy.home) > 8)
+			enemy.position = enemy.home;
+			enemy.hp = Stats(enemy.kind).hp;
+			enemy.supportCooldown = 3;
+			enemy.glow = 0;
+			enemy.actor.SetVisible(true);
+			enemy.cooldown = 1;
+		}
+		return;
+	}
+	enemy.cooldown = std::max(0.f, enemy.cooldown - dt);
+	float distance = Distance(enemy.position, m_Player);
+	bool safe = Distance(m_Player, Camp) < 9;
+	if (enemy.windup > 0)
+	{
+		enemy.windup -= dt;
+		if (enemy.windup <= 0)
+		{
+			enemy.cooldown = stats.cooldown;
+			bool ranged = enemy.kind == EnemyKind::Archer || enemy.kind == EnemyKind::Priest;
+			bool hit = ranged ? Distance(m_Player, enemy.attackTarget) < 1.1f
+			                  : distance < stats.range + .1f;
+			if (!safe && hit && distance < stats.range + 1 && m_HitCooldown <= 0 &&
+			    ClearLine(enemy.position, m_Player))
 			{
-				enemy.position = enemy.home;
-				enemy.hp = 24;
-				enemy.cooldown = 1;
+				m_Hp = std::max(0, m_Hp - std::max(1, stats.damage - Defense()));
+				m_HitCooldown = .6f;
 			}
-			continue;
 		}
-		enemy.cooldown = std::max(0.f, enemy.cooldown - dt);
-		float distance = Distance(enemy.position, m_Player);
-		bool safe = Distance(m_Player, Camp) < 9;
-		if (enemy.windup > 0)
+		return;
+	}
+	if (safe || distance > 24)
+		return;
+	// Support work is throttled; distant enemies never scan their allies.
+	enemy.supportCooldown -= dt;
+	if (enemy.kind == EnemyKind::Priest && enemy.supportCooldown <= 0)
+	{
+		enemy.supportCooldown = 4;
+		Enemy* target = nullptr;
+		for (auto& ally : m_Enemies)
+			if (ally.hp > 0 && ally.hp < Stats(ally.kind).hp && ally.actor.IsEnabled() &&
+			    Distance(ally.position, enemy.position) < 7 &&
+			    ClearLine(enemy.position, ally.position) && (!target || ally.hp < target->hp))
+				target = &ally;
+		if (target)
 		{
-			enemy.windup -= dt;
-			if (enemy.windup <= 0)
-			{
-				enemy.cooldown = 1.2f;
-				if (!safe && distance < 1.6f && m_HitCooldown <= 0 &&
-				    ClearLine(enemy.position, m_Player))
-				{
-					m_Hp = std::max(0, m_Hp - std::max(1, 5 - Defense()));
-					m_HitCooldown = .6f;
-				}
-			}
-			continue;
-		}
-		if (safe || distance > 14)
-			continue;
-		if (distance < 1.5f && ClearLine(enemy.position, m_Player))
-		{
-			if (enemy.cooldown <= 0)
-				enemy.windup = .5f;
-			continue;
-		}
-		int cell = Cell(enemy.position), next = cell;
-		for (int candidate : {cell - 1, cell + 1, cell - Columns, cell + Columns})
-		{
-			if (candidate < 0 || candidate >= Columns * Rows || m_Distance[candidate] < 0)
-				continue;
-			if (std::abs(candidate % Columns - cell % Columns) +
-			        std::abs(candidate / Columns - cell / Columns) !=
-			    1)
-				continue;
-			if (m_Distance[candidate] < m_Distance[next])
-				next = candidate;
-		}
-		Point target = next == m_FlowTarget ? m_Player : Center(next);
-		// Reach the current cell center before turning around a blocked corner.
-		if (!ClearLine(enemy.position, target))
-			target = Center(cell);
-		float toTarget = Distance(target, enemy.position);
-		if (toTarget > .001f)
-		{
-			float step = std::min(1.65f * dt, toTarget) / toTarget;
-			Move(enemy.position,
-			     {(target.x - enemy.position.x) * step, (target.y - enemy.position.y) * step});
+			target->hp = std::min(Stats(target->kind).hp, target->hp + 8);
+			target->glow = .6f;
+			enemy.glow = .6f;
+			enemy.cooldown = std::max(enemy.cooldown, 1.f);
+			return;
 		}
 	}
-	float follow = -std::expm1(-7 * dt);
-	m_Camera.x += (m_Player.x - m_Camera.x) * follow;
-	m_Camera.y += (m_Player.y - m_Camera.y) * follow;
+	if (distance > 14)
+	{
+		Point target = {enemy.home.x + std::sin(m_Time * .3f + enemy.home.x) * 1.5f,
+		                enemy.home.y + std::cos(m_Time * .3f + enemy.home.y) * 1.5f};
+		float length = Distance(target, enemy.position);
+		if (length > .1f && ClearLine(enemy.position, target))
+		{
+			float step = std::min(stats.speed * .35f * dt, length) / length;
+			Point previous = enemy.position;
+			Move(enemy.position,
+			     {(target.x - enemy.position.x) * step, (target.y - enemy.position.y) * step});
+			enemy.moving = Distance(previous, enemy.position) > .00001f;
+		}
+		return;
+	}
+	// Ranged enemies retreat when approached, without crossing blocked cells.
+	if ((enemy.kind == EnemyKind::Archer || enemy.kind == EnemyKind::Priest) && distance < 3 &&
+	    distance > .01f)
+	{
+		Point previous = enemy.position;
+		float step = stats.speed * dt / distance;
+		Move(enemy.position,
+		     {(enemy.position.x - m_Player.x) * step, (enemy.position.y - m_Player.y) * step});
+		enemy.moving = Distance(previous, enemy.position) > .00001f;
+	}
+	if (distance < stats.range && ClearLine(enemy.position, m_Player))
+	{
+		if (enemy.cooldown <= 0)
+		{
+			enemy.windup = stats.windup;
+			enemy.attackTarget = m_Player;
+		}
+		return;
+	}
+	int cell = Cell(enemy.position), next = cell;
+	for (int candidate : {cell - 1, cell + 1, cell - Columns, cell + Columns})
+	{
+		if (candidate < 0 || candidate >= Columns * Rows || m_Distance[candidate] < 0)
+			continue;
+		if (std::abs(candidate % Columns - cell % Columns) +
+		        std::abs(candidate / Columns - cell / Columns) !=
+		    1)
+			continue;
+		if (m_Distance[candidate] < m_Distance[next])
+			next = candidate;
+	}
+	Point target = next == m_FlowTarget ? m_Player : Center(next);
+	// Reach the current cell center before turning around a blocked corner.
+	if (!ClearLine(enemy.position, target))
+		target = Center(cell);
+	float toTarget = Distance(target, enemy.position);
+	if (toTarget > .001f)
+	{
+		float step = std::min(stats.speed * dt, toTarget) / toTarget;
+		Point previous = enemy.position;
+		Move(enemy.position,
+		     {(target.x - enemy.position.x) * step, (target.y - enemy.position.y) * step});
+		enemy.moving = Distance(previous, enemy.position) > .00001f;
+		Point delta = {enemy.position.x - previous.x, enemy.position.y - previous.y};
+		enemy.facing = std::abs(delta.x - delta.y) > std::abs(delta.x + delta.y)
+		                   ? (delta.x > delta.y ? 0 : 2)
+		                   : (delta.x + delta.y > 0 ? 1 : 3);
+	}
 }
 
 void FirstLevel::Update(float seconds, const bool* keys)
@@ -410,120 +623,229 @@ Point FirstLevel::Project(Point p, int width, int height) const
 	        height * .53f + (p.x + p.y - m_Camera.x - m_Camera.y) * 11.5f};
 }
 
+void FirstLevel::ModelActor(Actor& actor, LevelModel model, int enemy)
+{
+	actor.SetLayer(ActorLayer::World);
+	actor.SetDraw(
+	    [this, model, enemy](Actor& node, Renderer& r)
+	    {
+		    Point s = Project(node.Position(), m_Width, m_Height);
+		    if (s.x < -100 || s.x > m_Width + 100 || s.y < -50 || s.y > m_Height + 140)
+			    return;
+		    Color tint = {1, 1, 1, 1};
+		    if (enemy >= 0 && m_Enemies[enemy].flash > 0)
+			    tint = {1.8f, .7f, .6f, 1};
+		    if (model == LevelModel::Tree)
+		    {
+			    Point hero = Project(m_Player, m_Width, m_Height);
+			    auto smooth = [](float value)
+			    {
+				    value = std::max(0.f, std::min(1.f, value));
+				    return value * value * (3 - 2 * value);
+			    };
+			    float dy = s.y - hero.y;
+			    float overlap = smooth((55 - std::abs(s.x - hero.x)) / 20) * smooth(dy / 20) *
+			                    smooth((110 - dy) / 30);
+			    tint.a = 1 - .9f * overlap;
+		    }
+		    if (enemy >= 0 && m_Enemies[enemy].kind != EnemyKind::Slime)
+		    {
+			    const Enemy& foe = m_Enemies[enemy];
+			    Color coat = Stats(foe.kind).color;
+			    if (foe.flash > 0)
+				    coat = {1, .25f, .2f, 1};
+			    r.Character(
+			        s.x, s.y, foe.facing, foe.moving ? static_cast<int>(m_Time * 10) % 8 : 8, coat);
+			    if (foe.kind == EnemyKind::Priest)
+			    {
+				    r.Rect(s.x + 13, s.y - 52, 3, 50, {.52f, .36f, .2f, 1});
+				    r.Ellipse(s.x + 14, s.y - 54, 5, 5, {.9f, .5f, 1.4f, 1});
+			    }
+			    else if (foe.kind == EnemyKind::Archer)
+				    r.Polygon({{s.x + 12, s.y - 43}, {s.x + 25, s.y - 27}, {s.x + 12, s.y - 10}},
+				              {.6f, .4f, .2f, 1});
+			    else
+				    r.Polygon({{s.x + 12, s.y - 12}, {s.x + 28, s.y - 38}, {s.x + 31, s.y - 32}},
+				              {.85f, .85f, .75f, 1});
+		    }
+		    else
+			    r.Model(s, m_Models.Get(model), tint);
+		    if (enemy >= 0 && m_Enemies[enemy].glow > 0)
+			    r.SoftEllipse(s.x, s.y - 25, 27, 35, {.2f, 1.3f, .55f, .35f});
+	    });
+	Actor& shadow = actor.AddChild("Shadow");
+	shadow.SetLayer(ActorLayer::Shadow);
+	shadow.SetDraw(
+	    [this, model, enemy](Actor& node, Renderer& r)
+	    {
+		    Point s = Project(node.Position(), m_Width, m_Height);
+		    if (s.x < -100 || s.x > m_Width + 100 || s.y < -50 || s.y > m_Height + 140)
+			    return;
+		    r.SoftEllipse(s.x + 8,
+		                  s.y + 3,
+		                  model == LevelModel::Tree ? 38.f : 23.f,
+		                  10,
+		                  {.025f, .035f, .03f, .32f});
+		    if (enemy >= 0 && m_Enemies[enemy].windup > 0)
+		    {
+			    const Enemy& foe = m_Enemies[enemy];
+			    Point warning = foe.kind == EnemyKind::Archer || foe.kind == EnemyKind::Priest
+			                        ? Project(foe.attackTarget, m_Width, m_Height)
+			                        : s;
+			    r.Ellipse(warning.x, warning.y, 38, 19, {1, .19f, .10f, .35f});
+		    }
+	    });
+	if (enemy >= 0)
+		actor.AddChild("HealthBar")
+		    .SetDraw(
+		        [this, enemy](Actor& node, Renderer& r)
+		        {
+			        Point s = Project(node.Position(), m_Width, m_Height);
+			        if (s.x < -100 || s.x > m_Width + 100 || s.y < -50 || s.y > m_Height + 140)
+				        return;
+			        r.Rect(s.x - 18, s.y - 43, 36, 4, {.12f, .08f, .06f, 1});
+			        r.Rect(s.x - 18,
+			               s.y - 43,
+			               36.f * m_Enemies[enemy].hp / Stats(m_Enemies[enemy].kind).hp,
+			               4,
+			               {.75f, .26f, .15f, 1});
+		        });
+}
+
+void FirstLevel::BuildScene()
+{
+	m_StaticActors.ClearChildren();
+	m_PlayerActor.ClearChildren();
+	// Aggregate ground tiles in 8x8 groups; props still have independent Actor ownership.
+	for (int cy = 0; cy < Rows; cy += 8)
+		for (int cx = 0; cx < Columns; cx += 8)
+		{
+			Actor& chunk = m_StaticActors.AddChild("Ground/" + std::to_string(cy * Columns + cx),
+			                                       {cx * TileSize, cy * TileSize});
+			chunk.SetLayer(ActorLayer::Ground);
+			chunk.SetDraw(
+			    [this, cx, cy](Actor& actor, Renderer& r)
+			    {
+				    Point origin = actor.Position();
+				    Point middle = Project({origin.x + 8, origin.y + 8}, m_Width, m_Height);
+				    if (middle.x < -450 || middle.x > m_Width + 450 || middle.y < -250 ||
+				        middle.y > m_Height + 250)
+					    return;
+				    for (int y = 0; y < 8 && cy + y < Rows; ++y)
+					    for (int x = 0; x < 8 && cx + x < Columns; ++x)
+					    {
+						    int i = (cy + y) * Columns + cx + x;
+						    Point p = {origin.x + (x + .5f) * TileSize,
+						               origin.y + (y + .5f) * TileSize};
+						    auto project = [this](Point point)
+						    {
+							    return Project(point, m_Width, m_Height);
+						    };
+						    Point screen = project(p);
+						    if (screen.x < -100 || screen.x > m_Width + 100 || screen.y < -50 ||
+						        screen.y > m_Height + 140)
+							    continue;
+						    std::initializer_list<Point> quad = {project({p.x - 1, p.y - 1}),
+						                                         project({p.x + 1, p.y - 1}),
+						                                         project({p.x + 1, p.y + 1}),
+						                                         project({p.x - 1, p.y + 1})};
+						    if (m_Tiles[i] == Tile::Water)
+							    r.Polygon(quad,
+							              {.19f, .42f, .39f, 1},
+							              Material::Pond,
+							              {{-1, -1}, {1, -1}, {1, 1}, {-1, 1}});
+						    else
+						    {
+							    bool camp = Distance(p, Camp) < 9;
+							    r.Polygon(quad,
+							              camp ? Color{.48f, .40f, .27f, 1}
+							                   : Color{.25f, .34f, .18f, 1},
+							              camp ? Material::Dirt : Material::Grass);
+						    }
+					    }
+			    });
+			for (int y = cy; y < cy + 8 && y < Rows; ++y)
+				for (int x = cx; x < cx + 8 && x < Columns; ++x)
+				{
+					int i = y * Columns + x;
+					if (m_Tiles[i] != Tile::Tree && m_Tiles[i] != Tile::Rock)
+						continue;
+					Point p = Center(i);
+					Actor& prop = chunk.AddChild("Prop/" + std::to_string(i),
+					                             {p.x - cx * TileSize, p.y - cy * TileSize});
+					ModelActor(prop,
+					           m_Tiles[i] == Tile::Tree ? LevelModel::Tree : LevelModel::Rock);
+				}
+		}
+	ModelActor(m_StaticActors.AddChild("Campfire", {Camp.x + 1.5f, Camp.y - 1.5f}),
+	           LevelModel::Camp);
+	for (size_t i = 0; i < m_Enemies.size(); ++i)
+	{
+		ModelActor(m_Enemies[i].actor, LevelModel::Slime, static_cast<int>(i));
+		m_Enemies[i].actor.SetUpdate(
+		    [this, i](Actor&, float dt)
+		    {
+			    UpdateEnemy(m_Enemies[i], dt);
+		    });
+	}
+	m_PlayerActor.SetUpdate(
+	    [this](Actor&, float dt)
+	    {
+		    if (m_Input)
+			    UpdatePlayer(dt);
+	    });
+	m_PlayerActor.SetDraw(
+	    [this](Actor& actor, Renderer& r)
+	    {
+		    Point s = Project(actor.Position(), m_Width, m_Height);
+		    Color coat = m_HitCooldown > 0 ? Color{1, .30f, .25f, 1} : Color{.35f, .49f, .67f, 1};
+		    r.Character(
+		        s.x, s.y, m_Facing, m_Walking ? static_cast<int>(m_Time * 10) % 8 : 8, coat);
+	    });
+	Actor& shadow = m_PlayerActor.AddChild("Shadow");
+	shadow.SetLayer(ActorLayer::Shadow);
+	shadow.SetDraw(
+	    [this](Actor& actor, Renderer& r)
+	    {
+		    Point s = Project(actor.Position(), m_Width, m_Height);
+		    r.SoftEllipse(s.x + 8, s.y + 3, 23, 10, {.025f, .035f, .03f, .32f});
+	    });
+	m_PlayerActor.AddChild("Weapon").SetDraw(
+	    [this](Actor& actor, Renderer& r)
+	    {
+		    if (m_Swing <= 0)
+			    return;
+		    Point s = Project(actor.Position(), m_Width, m_Height);
+		    float angle = std::atan2((m_Aim.x + m_Aim.y) * 11.5f, (m_Aim.x - m_Aim.y) * 23);
+		    float swing = (1 - m_Swing / .18f) * 1.8f - .9f;
+		    Point tip = {s.x + std::cos(angle + swing) * 46,
+		                 s.y - 19 + std::sin(angle + swing) * 30};
+		    r.Polygon({{s.x - 3, s.y - 17}, tip, {s.x + 3, s.y - 23}}, {1.6f, 1.35f, .75f, .9f});
+	    });
+}
+
 void FirstLevel::Draw(Renderer& r, int width, int height, bool postprocess, bool paused)
 {
-	auto project = [&](Point p)
+	m_Width = width;
+	m_Height = height;
+	m_Paused = paused;
+	for (const auto& chunk : m_StaticActors.Children())
 	{
-		return Project(p, width, height);
-	};
-	auto visible = [&](Point p)
-	{
-		Point s = project(p);
-		return s.x > -100 && s.x < width + 100 && s.y > -50 && s.y < height + 140;
-	};
-	r.Begin(width, height, m_Time, project({0, 0}));
-
-	struct Object
-	{
-		Point p;
-		LevelModel model;
-		int enemy;
-		bool player;
-	};
-
-	std::vector<Object> objects;
-	for (int i = 0; i < Columns * Rows; ++i)
-	{
-		Point p = Center(i);
-		if (!visible(p))
+		if (chunk->Layer() != ActorLayer::Ground)
 			continue;
-		Tile tile = m_Tiles[i];
-		std::initializer_list<Point> quad = {project({p.x - 1, p.y - 1}),
-		                                     project({p.x + 1, p.y - 1}),
-		                                     project({p.x + 1, p.y + 1}),
-		                                     project({p.x - 1, p.y + 1})};
-		if (tile == Tile::Water)
-			r.Polygon(
-			    quad, {.19f, .42f, .39f, 1}, Material::Pond, {{-1, -1}, {1, -1}, {1, 1}, {-1, 1}});
-		else
-		{
-			bool camp = Distance(p, Camp) < 9;
-			r.Polygon(quad,
-			          camp ? Color{.48f, .40f, .27f, 1} : Color{.25f, .34f, .18f, 1},
-			          camp ? Material::Dirt : Material::Grass);
-			if (tile == Tile::Tree || tile == Tile::Rock)
-				objects.push_back(
-				    {p, tile == Tile::Tree ? LevelModel::Tree : LevelModel::Rock, -1, false});
-		}
+		Point origin = chunk->WorldPosition();
+		Point center = Project({origin.x + 8, origin.y + 8}, width, height);
+		chunk->SetVisible(center.x >= -450 && center.x <= width + 450 && center.y >= -250 &&
+		                  center.y <= height + 250);
 	}
-	objects.push_back({{Camp.x + 1.5f, Camp.y - 1.5f}, LevelModel::Camp, -1, false});
-	for (const auto& drop : m_Drops)
-		if (visible(drop.position))
-			objects.push_back({drop.position, LevelModel::Loot, -1, false});
-	for (size_t i = 0; i < m_Enemies.size(); ++i)
-		if (m_Enemies[i].hp > 0 && visible(m_Enemies[i].position))
-			objects.push_back(
-			    {m_Enemies[i].position, LevelModel::Slime, static_cast<int>(i), false});
-	objects.push_back({m_Player, LevelModel::Slime, -1, true});
-	for (const auto& object : objects)
-	{
-		Point s = project(object.p);
-		r.SoftEllipse(s.x + 8,
-		              s.y + 3,
-		              object.model == LevelModel::Tree ? 38.f : 23.f,
-		              10,
-		              {.025f, .035f, .03f, .32f});
-		if (object.enemy >= 0 && m_Enemies[object.enemy].windup > 0)
-			r.Ellipse(s.x, s.y, 38, 19, {1, .19f, .10f, .35f});
-	}
-	std::sort(objects.begin(),
-	          objects.end(),
-	          [](const Object& a, const Object& b)
-	          {
-		          return a.p.x + a.p.y < b.p.x + b.p.y;
-	          });
-	for (const auto& object : objects)
-	{
-		Point s = project(object.p);
-		if (object.player)
-		{
-			Color coat = m_HitCooldown > 0 ? Color{1, .30f, .25f, 1} : Color{.35f, .49f, .67f, 1};
-			r.Character(
-			    s.x, s.y, m_Facing, m_Walking ? static_cast<int>(m_Time * 10) % 8 : 8, coat);
-			if (m_Swing > 0)
-			{
-				float angle = std::atan2((m_Aim.x + m_Aim.y) * 11.5f, (m_Aim.x - m_Aim.y) * 23);
-				float swing = (1 - m_Swing / .18f) * 1.8f - .9f;
-				Point tip = {s.x + std::cos(angle + swing) * 46,
-				             s.y - 19 + std::sin(angle + swing) * 30};
-				r.Polygon({{s.x - 3, s.y - 17}, tip, {s.x + 3, s.y - 23}},
-				          {1.6f, 1.35f, .75f, .9f});
-			}
-		}
-		else
-		{
-			Color tint = {1, 1, 1, 1};
-			if (object.enemy >= 0 && m_Enemies[object.enemy].flash > 0)
-				tint = {1.8f, .7f, .6f, 1};
-			if (object.model == LevelModel::Tree)
-			{
-				Point hero = project(m_Player);
-				if (s.y > hero.y && s.y - hero.y < 110 && std::abs(s.x - hero.x) < 55)
-					tint.a = .1f;
-			}
-			r.Model(s, m_Models.Get(object.model), tint);
-			if (object.enemy >= 0)
-			{
-				r.Rect(s.x - 18, s.y - 43, 36, 4, {.12f, .08f, .06f, 1});
-				r.Rect(s.x - 18,
-				       s.y - 43,
-				       36.f * m_Enemies[object.enemy].hp / 24,
-				       4,
-				       {.75f, .26f, .15f, 1});
-			}
-		}
-	}
+	r.Begin(width, height, m_Time, Project({0, 0}, width, height));
+	m_Scene.DrawWorld(r);
 	r.FinishWorld(postprocess);
+	m_Scene.DrawUI(r);
+}
+
+void FirstLevel::DrawHud(Renderer& r, int width, int height, bool paused)
+{
 	r.Rect(15, 15, 520, 142, {.025f, .055f, .055f, .94f});
 	r.Text(30, 24, L"첫 레벨 · 갈대여울 외곽 숲", Gold);
 	r.Text(30,
@@ -545,7 +867,7 @@ void FirstLevel::Draw(Renderer& r, int width, int height, bool postprocess, bool
 	r.Text(30,
 	       126,
 	       m_Level >= 3 && m_Shards > 0 ? L"목표 달성! 야영지에서 E로 귀환 · 계속 사냥 가능"
-	                                    : L"목표: 3레벨 도달 + 점액 결정 1개 획득",
+	                                    : L"목표: 3레벨 도달 + 탐험 결정 1개 획득",
 	       Gold);
 	r.Rect(15,
 	       static_cast<float>(height - 88),
@@ -564,19 +886,23 @@ void FirstLevel::Draw(Renderer& r, int width, int height, bool postprocess, bool
 		r.Text(30, 177, m_Message, Gold);
 	if (m_Map)
 	{
-		float left = width * .5f - Columns * 5.f, top = height * .5f - Rows * 5.f;
-		r.Rect(
-		    left - 16, top - 40, Columns * 10.f + 32, Rows * 10.f + 64, {.02f, .045f, .04f, .98f});
+		float scale = std::min((width - 100.f) / Columns, (height - 140.f) / Rows);
+		float left = (width - Columns * scale) * .5f, top = (height - Rows * scale) * .5f;
+		r.Rect(left - 16,
+		       top - 40,
+		       Columns * scale + 32,
+		       Rows * scale + 64,
+		       {.02f, .045f, .04f, .98f});
 		for (int i = 0; i < Columns * Rows; ++i)
 		{
 			Color c = m_Tiles[i] == Tile::Ground  ? Color{.36f, .43f, .27f, 1}
 			          : m_Tiles[i] == Tile::Water ? Color{.13f, .35f, .45f, 1}
 			                                      : Color{.12f, .20f, .11f, 1};
-			r.Rect(left + (i % Columns) * 10.f, top + (i / Columns) * 10.f, 9, 9, c);
+			r.Rect(left + (i % Columns) * scale, top + (i / Columns) * scale, scale, scale, c);
 		}
 		auto mark = [&](Point p, Color c)
 		{
-			r.Ellipse(left + p.x / 2 * 10, top + p.y / 2 * 10, 4, 4, c);
+			r.Ellipse(left + p.x / 2 * scale, top + p.y / 2 * scale, 4, 4, c);
 		};
 		for (const auto& enemy : m_Enemies)
 			if (enemy.hp > 0)
@@ -592,7 +918,7 @@ void FirstLevel::Draw(Renderer& r, int width, int height, bool postprocess, bool
 		r.Text(x + 22, y + 20, L"가방과 성장 기록 · I 닫기", Gold);
 		r.Text(x + 22,
 		       y + 62,
-		       L"동전 " + std::to_wstring(m_Coins) + L"     점액 결정 " + std::to_wstring(m_Shards),
+		       L"동전 " + std::to_wstring(m_Coins) + L"     탐험 결정 " + std::to_wstring(m_Shards),
 		       Cream);
 		r.Text(x + 22,
 		       y + 102,

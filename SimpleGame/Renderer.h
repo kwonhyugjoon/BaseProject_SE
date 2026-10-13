@@ -3,6 +3,7 @@
 #include <vector>
 #include <map>
 #include <initializer_list>
+#include <functional>
 #include "Dependencies/glew.h"
 
 struct Point
@@ -48,6 +49,12 @@ class Renderer
 
 	void Begin(int width, int height, float time, Point worldOrigin);
 	void FinishWorld(bool postprocess);
+
+	void SetDrawOffset(Point offset)
+	{
+		m_DrawOffset = offset;
+	}
+
 	void Polygon(const std::vector<Point>& points,
 	             Color color,
 	             Material material = Material::Plain,
@@ -61,6 +68,7 @@ class Renderer
 	void SoftEllipse(float x, float y, float rx, float ry, Color color);
 	void Character(float x, float y, int facing, int frame, Color coat);
 	void Model(Point position, const std::vector<ModelVertex>& vertices, Color tint = {1, 1, 1, 1});
+	std::vector<ModelVertex> CaptureModel(Point origin, const std::function<void()>& draw);
 	void Flush();
 	void Text(float x, float y, const std::wstring& text, Color color);
 
@@ -77,8 +85,10 @@ class Renderer
 	int m_Width, m_Height;
 	float m_Elapsed = 0;
 	Point m_WorldOrigin = {0, 0};
+	Point m_DrawOffset = {0, 0};
 	bool m_Initialized = false, m_TargetsReady = false;
 	std::vector<Vertex> m_Vertices;
 	std::map<wchar_t, GLuint> m_Glyphs;
+	std::vector<GLuint> m_TextLists;
 	void* m_Font = nullptr;
 };

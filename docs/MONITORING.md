@@ -1,0 +1,83 @@
+# 로컬 월드 모니터
+
+게임 실행 중 별도 브라우저에서 NPC, 마을, 몹의 상태를 확인하는 HTML 화면이다. C++ / OpenGL 게임은 상태를 JSON으로 제공하며, 브라우저가 HTTP로 수신한다. 별도의 Node.js 서버, 패키지 설치, 인터넷 연결은 필요하지 않다.
+
+## 사용 방법
+
+1. Visual Studio에서 변경된 프로젝트를 다시 로드하고 `Release | x64`로 빌드·실행한다.
+2. 게임에서 **F9**를 눌러 기본 브라우저로 모니터를 연다. 직접 `http://127.0.0.1:8765/`에 접속해도 된다. 별도 창을 원하면 브라우저의 새 창에서 이 주소를 연다.
+3. NPC 상태와 위치, 마을 인구를 확인한다. **L**로 첫 사냥터에 진입하면 실제 생성된 몹을 집계한다.
+4. 게임에서 일시정지하거나 튜토리얼로 돌아가면 화면의 지역·상태 표시가 바뀌는지 확인한다.
+5. 게임을 종료하면 연결 끊김 표시와 마지막 수신값이 남는다. 다시 실행하면 브라우저가 자동으로 재연결한다.
+
+HTML은 파일을 직접 더블클릭하는 대신 위 로컬 주소로 연다. 게임이 HTML/CSS/JS와 JSON을 같은 주소에서 제공한다. 빌드 시 `SimpleGame/Monitor/`의 세 파일을 실행 파일 옆 `Monitor/` 폴더로 복사한다.
+
+## 현재 표시 범위
+
+- **NPC**: 갈대여울과 주변에 배치된 전체 주민. 이름, Actor 이름, 행동 패턴, 현재 행동, 월드 위치, 바라보는 방향, Actor 표시·활성 여부. 이름·행동 검색과 상태 필터를 제공한다.
+- **마을**: 현재 구현된 갈대여울과 주변 지역 한 곳. 인구는 이 지역에 배치된 NPC 수이며, 별도 인구 시뮬레이션이나 세부 정착지별 주민 소속을 의미하지 않는다.
+- **분위기·소문·성향**: 현재 게임에 상태 관리 데이터가 없으므로 `null` / ‘미구현’. 모니터를 위해 새로운 세계 규칙이나 가상 수치를 만들지 않는다. 소문은 미구현인 `null`과 구현 후 등록된 소문이 없는 `[]`를 구분한다.
+- **호수 선택**: 실제 튜토리얼의 세션 선택값을 표시한다. 선택하지 않음 / 낯선 목소리 듣기 / 종 잠재우기.
+- **몹**: 실제 첫 레벨의 슬라임·도적·궁수·타락한 사제 배치 수, 생존 수, 재등장 대기 수. 아직 사냥터에 진입하지 않았다면 미방문 상태다.
+
+NPC의 ‘현재 상태’는 기존 AI의 조건과 이동값을 읽어 표시한 관측값이다. 새로운 AI 상태 머신을 추가하지 않는다. 다른 지역의 NPC는 `inactive_area`로 표시하며 위치 갱신을 중단한다. 사냥터를 떠나면 몹 수는 마지막 상태를 유지한다. 일시정지 중에도 연결은 유지되고 정지 상태를 보낸다.
+
+Actor의 `visible` / `enabled`는 그래프의 표시·활성 설정이다. 현재 카메라 안에 보이는지나 지역이 실제로 시뮬레이션 중인지는 별개이며, 현재 행동·지역 표시로 구분한다.
+
+## JSON 수신
+
+`GET http://127.0.0.1:8765/api/state`
+
+- UTF-8 JSON, 전체 스냅샷 방식. 이전 메시지의 일부를 누적하지 않고 최신 상태로 교체한다.
+- 게임은 약 1초마다 갱신하고 브라우저는 이전 수신이 끝난 뒤 1초 간격으로 다시 요청한다. WebSocket 방식은 아니다.
+- `Cache-Control: no-store`, `Content-Length`, `Connection: close`를 사용한다.
+- 최초 상태 준비 전에는 HTTP 503. 정상 상태는 HTTP 200. 지원하지 않는 주소는 404, GET 외 요청은 405.
+- 게임 상태가 4초 넘게 갱신되지 않으면 ‘갱신 지연’. 요청 실패 시 ‘연결 끊김’. 이전 수신값을 최신값처럼 표시하지 않는다.
+
+| 필드 | 의미 |
+|---|---|
+| `schemaVersion` | 메시지 형식 버전, 현재 `1` |
+| `sampledAt` | 게임에서 상태를 복사한 Unix 시간, 밀리초 |
+| `scene` | `tutorial` 또는 `first_level` |
+| `paused` | 게임 일시정지 여부 |
+| `counts` | `npcs`, `villages`, `mobs`, `aliveMobs`, `deadMobs` |
+| `villages[]` | `id`, `name`, `population`, `mood`, `disposition`, `rumors`, `lakeChoice` |
+| `npcs[]` | `id`, `name`, `villageId`, `routine`, `state`, `position: {x, y}`, `facing`, `visible`, `enabled` |
+| `hunting.loaded` | 첫 사냥터가 생성되었는지 여부 |
+| `hunting.types[]` | 몹 종류별 `kind`, `name`, `total`, `alive`, `dead` |
+
+NPC 상태: `standing`, `idle`, `walking`, `returning`, `talking`, `watching_player`, `blocked`, `distant`, `waiting`, `paused`, `inactive_area`, `disabled`.
+
+`lakeChoice`: `null`, `listen`, `close`. 몹 종류: `slime`, `bandit`, `archer`, `priest`. `facing`: `0` 동, `1` 남, `2` 서, `3` 북(화면 방향).
+
+## 실행 비용과 연결 처리
+
+게임 스레드에서 1초마다 기존 데이터와 Actor 위치를 읽어 JSON 문자열을 만든다. 통신 스레드는 복사된 문자열과 미리 읽은 HTML 자원만 사용하며 게임 객체에 접근하지 않는다. 짧은 문자열 교체·복사 동안만 잠금을 잡는다. 매 프레임 파일을 쓰거나 네트워크 응답을 기다리지 않는다.
+
+서버는 **127.0.0.1:8765**에만 바인딩한다. 외부 PC 접속이나 상태 변경 API는 제공하지 않는다. 요청의 수신·송신 시간과 헤더 크기를 제한하고, 종료 시 작업 스레드를 먼저 정리한 뒤 소켓을 닫는다.
+
+같은 포트를 다른 프로그램이 사용하거나 HTML 자원이 없으면 콘솔에 원인을 출력하고 게임은 계속 실행한다. 이 경우 F9로 열리지 않으므로 콘솔의 `Monitor:` 메시지를 확인한다. 동시에 실행할 수 있는 모니터 서버는 하나다.
+
+## 검증
+
+통신 독립 테스트는 게임이나 OpenGL 창을 열지 않는다. Visual Studio의 x64 개발자 명령 프롬프트에서 저장소 루트 기준으로 실행할 수 있다. 테스트 전 실행 중인 게임의 모니터 서버를 종료한다.
+
+```bat
+set "MONITOR_TEST_REPO=%CD%"
+pushd "%TEMP%"
+cl /nologo /EHsc /std:c++14 /utf-8 /DNOMINMAX "%MONITOR_TEST_REPO%\tests\MonitorServerTestHost.cpp" "%MONITOR_TEST_REPO%\SimpleGame\MonitorState.cpp" "%MONITOR_TEST_REPO%\SimpleGame\MonitorServer.cpp" /Fe:MonitorServerTestHost.exe /link ws2_32.lib shell32.lib
+if not errorlevel 1 python "%MONITOR_TEST_REPO%\tests\MonitorProtocolTests.py" "%TEMP%\MonitorServerTestHost.exe"
+popd
+```
+
+프로토콜 테스트는 한국어·따옴표·역슬래시·제어 문자·이모지의 JSON 변환, 소수점 로캘, 실제 수신 바이트 길이, 자원 주소, 집계, 일시정지, 503 복구, 분할 수신, 8KB 초과 헤더 거부, 응답하지 않는 연결의 시간 제한, 종료 처리를 확인한다. 기존 주민·첫 레벨 독립 테스트에도 모니터 집계와 지역·일시정지 상태 검사를 추가했다.
+
+2026-10-12 확인 결과:
+
+- 통신 모듈 독립 빌드와 프로토콜 테스트 통과.
+- 주민 독립 테스트 통과: NPC 38명, 지역 전환·일시정지 관측값, 인구 집계와 기존 주민 동작 검사.
+- 첫 레벨 독립 테스트 통과: 시드 1·42·930의 몹 192개 집계, 네 종류의 처치·재등장 시 생존 수 변화.
+- 시험 데이터로 실제 브라우저의 HTML 표시, 이름 검색과 상태 필터 확인.
+- JavaScript 문법, Visual Studio 프로젝트 XML, C++ 상태 수집 코드 문법과 파일 변경 내역 확인.
+
+게임 실행 파일은 빌드·실행하지 않았다. 실제 게임의 플레이 결과와 프레임 영향은 별도로 사용자가 확인한다. 위 독립 테스트와 브라우저 시험은 실제 플레이 결과를 대신하지 않는다.

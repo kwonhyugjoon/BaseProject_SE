@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="ko">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>갈대여울 · 월드 모니터</title>
+    <link rel="stylesheet" href="monitor.css">
+    <script src="monitor.js" defer></script>
+</head>
+<body>
+    <main>
+        <header class="page-header">
+            <div>
+                <p class="eyebrow">WORLD MONITOR / LOCAL</p>
+                <h1>갈대여울 관측소</h1>
+                <p class="subtitle">마을과 주민, 사냥터의 현재 상태를 한눈에 확인합니다.</p>
+            </div>
+            <div class="connection-panel">
+                <span id="connection" class="badge" role="status">연결 대기</span>
+                <p id="scene">게임 상태를 기다리고 있습니다.</p>
+                <small id="updated">아직 수신한 상태가 없습니다.</small>
+            </div>
+        </header>
+
+        <p id="notice" class="notice" role="status">게임을 실행하면 자동으로 연결됩니다.</p>
+
+        <section class="metrics" aria-label="전체 개체 수">
+            <article><span>전체 NPC</span><strong id="npc-count">—</strong><small>마을과 주변에 배치된 주민</small></article>
+            <article><span>생존 몹</span><strong id="alive-count">—</strong><small id="mob-total">사냥터에 진입하면 집계</small></article>
+            <article><span>재등장 대기</span><strong id="dead-count">—</strong><small>처치된 몹의 배치 수</small></article>
+            <article><span>마을</span><strong id="village-count">—</strong><small>등록된 마을과 주변 지역</small></article>
+        </section>
+
+        <div class="overview">
+            <section class="panel">
+                <div class="section-heading"><h2>마을별 상태</h2><span class="caption">현재 배치 데이터 기준</span></div>
+                <div id="villages" class="villages"><p class="empty">마을 정보를 기다리는 중입니다.</p></div>
+                <p class="footnote">분위기·소문·성향은 아직 게임에 상태 데이터가 없어 ‘미구현’으로 표시합니다.</p>
+            </section>
+            <section class="panel">
+                <div class="section-heading"><h2>사냥터 개체 수</h2></div>
+                <p id="hunting-state" class="caption">첫 사냥터에 진입하면 몹이 생성됩니다.</p>
+                <div class="table-scroll">
+                    <table>
+                        <thead><tr><th scope="col">종류</th><th scope="col">배치</th><th scope="col">생존</th><th scope="col">재등장 대기</th></tr></thead>
+                        <tbody id="mobs"><tr><td colspan="4" class="empty">수신 대기</td></tr></tbody>
+                    </table>
+                </div>
+            </section>
+        </div>
+
+        <section class="panel npc-panel">
+            <div class="section-heading npc-heading">
+                <div><h2>NPC 개별 상태 <span id="npc-visible" class="caption"></span></h2><p class="caption">다른 지역의 NPC는 마지막 위치를 유지하며 갱신을 쉬고 있습니다.</p></div>
+                <div class="filters">
+                    <label>이름 · 행동 검색<input id="search" type="search" placeholder="예: 엘린, 순찰" autocomplete="off"></label>
+                    <label>상태<select id="state-filter"><option value="">전체 상태</option></select></label>
+                </div>
+            </div>
+            <div class="table-scroll">
+                <table class="npc-table">
+                    <thead><tr><th scope="col">주민 / Actor</th><th scope="col">행동 패턴</th><th scope="col">현재 상태</th><th scope="col">위치 (X, Y)</th><th scope="col">방향</th><th scope="col">Actor 표시 / 활성</th></tr></thead>
+                    <tbody id="npcs"><tr><td colspan="6" class="empty">NPC 정보를 기다리는 중입니다.</td></tr></tbody>
+                </table>
+            </div>
+        </section>
+        <footer><span>1초 간격으로 상태 수신 · 연결이 끊기면 마지막 수신값 유지</span><a href="/api/state" target="_blank" rel="noopener">JSON 상태 보기 ↗</a></footer>
+    </main>
+</body>
+</html>

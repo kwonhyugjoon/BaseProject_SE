@@ -22,6 +22,14 @@ float noise(vec2 p)
 	           f.y);
 }
 
+vec4 spriteTexel(ivec2 pixel)
+{
+	ivec2 size = textureSize(u_Atlas, 0);
+	vec4 tex = texelFetch(u_Atlas, clamp(pixel, ivec2(0), size - ivec2(1)), 0);
+	vec3 color = tex.r < 0.01 && tex.g < 0.01 ? v_Color.rgb * tex.b : tex.rgb;
+	return vec4(color * tex.a, tex.a);
+}
+
 void main()
 {
 	vec3 c = v_Color.rgb;
@@ -30,9 +38,15 @@ void main()
 
 	if (v_Material == 7)
 	{
-		vec4 tex = texture(u_Atlas, v_UV);
-		c = tex.r < 0.01 && tex.g < 0.01 ? c * tex.b : tex.rgb;
-		FragColor = vec4(c, alpha * tex.a);
+		// Decode coat colors before interpolation; premultiplication prevents dark fringes.
+		vec2 pixel = v_UV * vec2(textureSize(u_Atlas, 0)) - 0.5;
+		ivec2 base = ivec2(floor(pixel));
+		vec2 weight = fract(pixel);
+		vec4 tex =
+		    mix(mix(spriteTexel(base), spriteTexel(base + ivec2(1, 0)), weight.x),
+		        mix(spriteTexel(base + ivec2(0, 1)), spriteTexel(base + ivec2(1, 1)), weight.x),
+		        weight.y);
+		FragColor = vec4(tex.rgb / max(tex.a, 0.00001), alpha * tex.a);
 		return;
 	}
 
@@ -75,7 +89,7 @@ void main()
 	}
 	else if (v_Material == 6 || v_Material == 11)
 	{
-		vec2 d = v_Material == 11 ? p : (p - vec2(57, 28)) / vec2(12, 10);
+		vec2 d = v_Local == 1 ? p : (p - vec2(57, 28)) / vec2(12, 10);
 		p = v_World;
 		float shore = length(d);
 		vec2 flow = vec2(u_Time * 0.12, -u_Time * 0.07);

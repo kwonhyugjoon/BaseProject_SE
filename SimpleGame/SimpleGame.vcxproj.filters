@@ -24,6 +24,9 @@
     <ClInclude Include="stdafx.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
+    <ClInclude Include="TreeCollisionGrid.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
     <ClInclude Include="targetver.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
@@ -33,6 +36,12 @@
     <ClInclude Include="Renderer.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
+    <ClInclude Include="Actor.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="SceneGraph.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
     <ClInclude Include="AssetCache.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
@@ -40,6 +49,12 @@
       <Filter>헤더 파일</Filter>
     </ClInclude>
     <ClInclude Include="FirstLevel.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="MonitorState.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="MonitorServer.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
   </ItemGroup>
@@ -56,6 +71,12 @@
     <ClCompile Include="Renderer.cpp">
       <Filter>소스 파일</Filter>
     </ClCompile>
+    <ClCompile Include="Actor.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="SceneGraph.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
     <ClCompile Include="AssetCache.cpp">
       <Filter>소스 파일</Filter>
     </ClCompile>
@@ -63,6 +84,12 @@
       <Filter>소스 파일</Filter>
     </ClCompile>
     <ClCompile Include="FirstLevel.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="MonitorState.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="MonitorServer.cpp">
       <Filter>소스 파일</Filter>
     </ClCompile>
   </ItemGroup>
@@ -78,6 +105,15 @@
     </None>
     <None Include="Shaders\SolidRect.vs">
       <Filter>소스 파일\Shaders</Filter>
+    </None>
+    <None Include="Monitor\index.html">
+      <Filter>리소스 파일</Filter>
+    </None>
+    <None Include="Monitor\monitor.css">
+      <Filter>리소스 파일</Filter>
+    </None>
+    <None Include="Monitor\monitor.js">
+      <Filter>리소스 파일</Filter>
     </None>
   </ItemGroup>
 </Project>

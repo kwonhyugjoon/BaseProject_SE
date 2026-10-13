@@ -25,6 +25,10 @@
     <RootNamespace>SimpleGame</RootNamespace>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
+  <PropertyGroup>
+    <Configuration Condition="'$(Configuration)'==''">Release</Configuration>
+    <Platform Condition="'$(Platform)'==''">x64</Platform>
+  </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
@@ -156,18 +160,27 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Renderer.h" />
+    <ClInclude Include="Actor.h" />
+    <ClInclude Include="TreeCollisionGrid.h" />
+    <ClInclude Include="SceneGraph.h" />
     <ClInclude Include="AssetCache.h" />
     <ClInclude Include="LevelModels.h" />
     <ClInclude Include="FirstLevel.h" />
+    <ClInclude Include="MonitorState.h" />
+    <ClInclude Include="MonitorServer.h" />
     <ClInclude Include="CharacterSprites.h" />
     <ClInclude Include="stdafx.h" />
     <ClInclude Include="targetver.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Renderer.cpp" />
+    <ClCompile Include="Actor.cpp" />
+    <ClCompile Include="SceneGraph.cpp" />
     <ClCompile Include="AssetCache.cpp" />
     <ClCompile Include="LevelModels.cpp" />
     <ClCompile Include="FirstLevel.cpp" />
+    <ClCompile Include="MonitorState.cpp" />
+    <ClCompile Include="MonitorServer.cpp" />
     <ClCompile Include="CharacterSprites.cpp" />
     <ClCompile Include="SimpleGame.cpp" />
     <ClCompile Include="stdafx.cpp">
@@ -182,18 +195,30 @@
     <None Include="Shaders\SolidRect.vs" />
     <None Include="Shaders\PostProcess.vs" />
     <None Include="Shaders\PostProcess.fs" />
+    <None Include="Monitor\index.html" />
+    <None Include="Monitor\monitor.css" />
+    <None Include="Monitor\monitor.js" />
   </ItemGroup>
   <ItemDefinitionGroup>
     <ClCompile>
       <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
       <PreprocessorDefinitions>NOMINMAX;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
+    <Link>
+      <AdditionalDependencies>ws2_32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
     <TutorialShaders Include="$(ProjectDir)Shaders\*.vs;$(ProjectDir)Shaders\*.fs" />
   </ItemGroup>
   <Target Name="CopyTutorialShaders" AfterTargets="Build">
     <Copy SourceFiles="@(TutorialShaders)" DestinationFolder="$(TargetDir)Shaders" SkipUnchangedFiles="true" />
+  </Target>
+  <ItemGroup>
+    <MonitorAssets Include="$(ProjectDir)Monitor\index.html;$(ProjectDir)Monitor\monitor.css;$(ProjectDir)Monitor\monitor.js" />
+  </ItemGroup>
+  <Target Name="CopyMonitorAssets" AfterTargets="Build">
+    <Copy SourceFiles="@(MonitorAssets)" DestinationFolder="$(TargetDir)Monitor" SkipUnchangedFiles="true" />
   </Target>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

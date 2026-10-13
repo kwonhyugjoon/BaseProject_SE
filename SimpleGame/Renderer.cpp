@@ -151,8 +151,8 @@ Renderer::Renderer(int width, int height) : m_Width(width), m_Height(height)
 	             GL_RGBA,
 	             GL_UNSIGNED_BYTE,
 	             pixels.data());
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 	glGenFramebuffers(1, &m_Framebuffer);
@@ -211,6 +211,7 @@ void Renderer::ResizeTargets()
 
 void Renderer::Begin(int width, int height, float time, Point worldOrigin)
 {
+	m_DrawOffset = {0, 0};
 	if (width != m_Width || height != m_Height)
 	{
 		m_Width = width;
@@ -264,7 +265,8 @@ void Renderer::AppendPolygon(
 	for (size_t i = 1; i + 1 < count; ++i)
 		for (size_t index : {size_t(0), i, i + 1})
 		{
-			Point p = points[index], t = local ? uv[index] : Point{0, 0};
+			Point p = {points[index].x + m_DrawOffset.x, points[index].y + m_DrawOffset.y};
+			Point t = local ? uv[index] : Point{0, 0};
 			m_Vertices.push_back({p.x, p.y, c.r, c.g, c.b, c.a, id, t.x, t.y});
 		}
 }
@@ -288,8 +290,10 @@ void Renderer::Ellipse(float x, float y, float rx, float ry, Color c)
 
 void Renderer::SoftEllipse(float x, float y, float rx, float ry, Color c)
 {
-	const auto& circle = UnitCircle<40>();
-	for (int i = 0; i < 40; ++i)
+	x += m_DrawOffset.x;
+	y += m_DrawOffset.y;
+	const auto& circle = UnitCircle<24>();
+	for (int i = 0; i < 24; ++i)
 	{
 		Point a = circle[i], b = circle[(i + 1) % circle.size()];
 		m_Vertices.push_back({x, y, c.r, c.g, c.b, c.a, 0, 0, 0});
@@ -300,6 +304,8 @@ void Renderer::SoftEllipse(float x, float y, float rx, float ry, Color c)
 
 void Renderer::Character(float x, float y, int facing, int frame, Color coat)
 {
+	x += m_DrawOffset.x;
+	y += m_DrawOffset.y;
 	float u0 = (float)frame / SpriteFrames, u1 = (float)(frame + 1) / SpriteFrames;
 	float v0 = (float)facing / SpriteDirections, v1 = (float)(facing + 1) / SpriteDirections;
 	Vertex a = {x - 24, y - 60, coat.r, coat.g, coat.b, coat.a, 7, u0, v0};
@@ -313,16 +319,37 @@ void Renderer::Character(float x, float y, int facing, int frame, Color coat)
 
 void Renderer::Model(Point position, const std::vector<ModelVertex>& vertices, Color tint)
 {
-	for (auto vertex : vertices)
+	position.x += m_DrawOffset.x;
+	position.y += m_DrawOffset.y;
+	size_t begin = m_Vertices.size();
+	m_Vertices.insert(m_Vertices.end(), vertices.begin(), vertices.end());
+	Vertex* appended = m_Vertices.data();
+	for (size_t i = begin; i < m_Vertices.size(); ++i)
 	{
+		Vertex& vertex = appended[i];
 		vertex.x += position.x;
 		vertex.y += position.y;
 		vertex.r *= tint.r;
 		vertex.g *= tint.g;
 		vertex.b *= tint.b;
 		vertex.a *= tint.a;
-		m_Vertices.push_back(vertex);
 	}
+}
+
+std::vector<ModelVertex> Renderer::CaptureModel(Point origin, const std::function<void()>& draw)
+{
+	std::vector<Vertex> saved;
+	saved.swap(m_Vertices);
+	draw();
+	std::vector<ModelVertex> model;
+	model.swap(m_Vertices);
+	m_Vertices.swap(saved);
+	for (auto& vertex : model)
+	{
+		vertex.x -= origin.x + m_DrawOffset.x;
+		vertex.y -= origin.y + m_DrawOffset.y;
+	}
+	return model;
 }
 
 void Renderer::Flush()
@@ -367,6 +394,8 @@ void Renderer::FinishWorld(bool postprocess)
 
 void Renderer::Text(float x, float y, const std::wstring& text, Color c)
 {
+	x += m_DrawOffset.x;
+	y += m_DrawOffset.y;
 	// Windows bitmap glyphs support Korean without an external font asset.
 	// Bitmap display lists require the compatibility context requested at startup.
 	Flush();
@@ -380,6 +409,7 @@ void Renderer::Text(float x, float y, const std::wstring& text, Color c)
 	glRasterPos2f(x, y + 18);
 	HDC dc = wglGetCurrentDC();
 	HGDIOBJ previous = SelectObject(dc, (HFONT)m_Font);
+	m_TextLists.clear();
 
 	for (wchar_t ch : text)
 	{
@@ -399,7 +429,10 @@ void Renderer::Text(float x, float y, const std::wstring& text, Color c)
 			}
 			it = m_Glyphs.emplace(ch, list).first;
 		}
-		glCallList(it->second);
+		m_TextLists.push_back(it->second);
 	}
+	glListBase(0);
+	if (!m_TextLists.empty())
+		glCallLists(static_cast<GLsizei>(m_TextLists.size()), GL_UNSIGNED_INT, m_TextLists.data());
 	SelectObject(dc, previous);
 }

@@ -1,20 +1,31 @@
 #pragma once
 #include "LevelModels.h"
+#include "SceneGraph.h"
 #include <array>
 #include <cstdint>
 #include <string>
 
+struct MonitorSnapshot;
+
 class FirstLevel
 {
   public:
+	FirstLevel();
+
+	SceneGraph& Scene()
+	{
+		return m_Scene;
+	}
+
 	void Begin(uint32_t seed, bool resetProgress = false);
 	void Update(float seconds, const bool* keys);
 	bool Key(unsigned char key);
 	void Draw(Renderer& renderer, int width, int height, bool postprocess, bool paused);
+	void CaptureMonitorState(MonitorSnapshot& snapshot) const;
 
   private:
-	static constexpr int Columns = 48;
-	static constexpr int Rows = 40;
+	static constexpr int Columns = 96;
+	static constexpr int Rows = 80;
 	static constexpr float TileSize = 2.f;
 	enum class Tile : unsigned char
 	{
@@ -24,25 +35,63 @@ class FirstLevel
 		Water
 	};
 
+	enum class EnemyKind
+	{
+		Slime,
+		Bandit,
+		Archer,
+		Priest
+	};
+
+	struct EnemyStats
+	{
+		int hp, damage, experience, coins;
+		float speed, range, windup, cooldown;
+		Color color;
+	};
+
+	static const EnemyStats& Stats(EnemyKind kind);
+
 	struct Enemy
 	{
-		Point position, home;
+		Actor& actor;
+		Point& position;
+		Point home;
+		EnemyKind kind;
+		Point attackTarget = {0, 0};
+		float supportCooldown = 3, glow = 0;
+		int facing = 1;
+		bool moving = false;
 		int hp = 24;
 		float cooldown = 1, windup = 0, respawn = 0, flash = 0;
+
+		Enemy(Actor& node, Point origin, EnemyKind type)
+		    : actor(node), position(node.Position()), home(origin), kind(type), hp(Stats(type).hp)
+		{
+		}
 	};
 
 	struct Drop
 	{
-		Point position;
+		Actor* actor;
 		int coins, shards;
 	};
 
+	SceneGraph m_Scene;
+	Actor& m_PlayerActor;
+	Actor& m_StaticActors;
+	Actor& m_EnemyActors;
+	Actor& m_DropActors;
+	Point& m_Player;
+	const bool* m_Input = nullptr;
+	int m_Width = 1280, m_Height = 800;
+	bool m_Paused = false;
 	std::array<Tile, Columns * Rows> m_Tiles;
 	std::array<int, Columns * Rows> m_Distance;
 	std::vector<Enemy> m_Enemies;
 	std::vector<Drop> m_Drops;
 	LevelModels m_Models;
-	Point m_Player = {7, 7}, m_Camera = {7, 7}, m_Aim = {1, 0};
+	Point m_Camera = {7, 7}, m_Aim = {1, 0};
 	int m_Level = 1, m_Experience = 0, m_Hp = 100, m_Coins = 0, m_Shards = 0;
 	int m_Facing = 1, m_Kills = 0, m_FlowTarget = -1;
 	uint32_t m_Seed = 1, m_Random = 1;
@@ -56,6 +105,7 @@ class FirstLevel
 	uint32_t Random();
 	void Generate();
 	bool Connected() const;
+	bool NeighborPathsConnected(int cell) const;
 	int Cell(Point position) const;
 	Point Center(int cell) const;
 	bool Walkable(Point position) const;
@@ -63,6 +113,11 @@ class FirstLevel
 	void Move(Point& position, Point delta);
 	void RebuildFlow();
 	void Step(float dt, const bool* keys);
+	void UpdatePlayer(float dt);
+	void UpdateEnemy(Enemy& enemy, float dt);
+	void BuildScene();
+	void ModelActor(Actor& actor, LevelModel model, int enemy = -1);
+	void DrawHud(Renderer& renderer, int width, int height, bool paused);
 	void Attack();
 	void Pickup();
 	void GainExperience(int amount);

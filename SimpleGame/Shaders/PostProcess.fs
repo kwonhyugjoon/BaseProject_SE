@@ -33,18 +33,18 @@ void main()
 	    mix(center, (n + s + e + w + center * 4.0) / 8.0, smoothstep(0.09, 0.35, hi - lo) * 0.6);
 
 	// Sparse, soft bloom from HDR lights. Fixed footprint in pixels.
-	vec3 glow = vec3(0);
-	float weight = 0;
+	vec3 glow = max(center - vec3(0.82), vec3(0)) * 4.0;
 
-	for (int y = -2; y <= 2; ++y)
-		for (int x = -2; x <= 2; ++x)
+	for (int y = -1; y <= 1; ++y)
+		for (int x = -1; x <= 1; ++x)
 		{
-			float k = exp(-float(x * x + y * y) * 0.45);
-			vec3 sampleColor = texture(u_Scene, v_UV + vec2(x, y) * u_Texel * 3.0).rgb;
+			if (x == 0 && y == 0)
+				continue;
+			float k = x == 0 || y == 0 ? 2.0 : 1.0;
+			vec3 sampleColor = texture(u_Scene, v_UV + vec2(x, y) * u_Texel * 4.5).rgb;
 			glow += max(sampleColor - vec3(0.82), vec3(0)) * k;
-			weight += k;
 		}
-	c += glow / weight * 0.42;
+	c += glow / 16.0 * 0.42;
 	c = (c - 0.22) * 1.06 + 0.22;
 	c *= vec3(1.045, 1.018, 0.968);
 	float vignette = 1.0 - 0.16 * smoothstep(0.2, 0.72, length(v_UV - 0.5));
