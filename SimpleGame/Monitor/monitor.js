@@ -60,8 +60,8 @@ function renderMobs(snapshot) {
     byId("mobs").replaceChildren(fragment);
     byId("hunting-state").textContent = !snapshot.hunting.loaded
         ? "미방문 · 첫 사냥터에 진입하면 몹이 생성됩니다."
-        : snapshot.scene === "first_level"
-            ? (snapshot.paused ? "첫 사냥터 · 일시정지" : "첫 사냥터 · 갱신 중")
+        : snapshot.scene !== "tutorial"
+            ? (snapshot.paused ? "탐험 지역 · 일시정지" : "탐험 지역 · 갱신 중")
             : "다른 지역 · 마지막 사냥터 상태 유지";
 }
 
@@ -103,7 +103,9 @@ function render(snapshot) {
     byId("alive-count").textContent = snapshot.hunting.loaded ? snapshot.counts.aliveMobs : "—";
     byId("dead-count").textContent = snapshot.hunting.loaded ? snapshot.counts.deadMobs : "—";
     byId("mob-total").textContent = snapshot.hunting.loaded ? `전체 배치 ${snapshot.counts.mobs}개` : "사냥터에 진입하면 집계";
-    byId("scene").textContent = `${snapshot.scene === "first_level" ? "첫 사냥터" : "튜토리얼 · 갈대여울"}${snapshot.paused ? " / 일시정지" : ""}`;
+    const sceneName = {tutorial: "갈대여울", first_level: "옛 드워프 수로", basin: "솔바람 분지",
+        echo_hall: "메아리 회랑", stone_ridge: "돌등성이 전초지", mist_shore: "안개 호숫가"};
+    byId("scene").textContent = `${sceneName[snapshot.scene] || snapshot.scene}${snapshot.paused ? " / 일시정지" : ""}`;
     byId("updated").textContent = `마지막 상태: ${new Date(snapshot.sampledAt).toLocaleTimeString("ko-KR")}`;
     renderVillages(snapshot);
     renderMobs(snapshot);

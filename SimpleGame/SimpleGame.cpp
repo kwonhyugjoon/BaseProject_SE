@@ -293,6 +293,10 @@ namespace
 	const Point& shrine = shrineActor.Position();
 	std::vector<Actor*> ruinActors;
 	Actor* lakeActor = nullptr;
+	Actor* dungeonGate = nullptr;
+	WorldTravel::ReturnTrail forestTrail;
+	std::wstring travelNotice;
+	float travelNoticeTime = 0;
 
 	float Distance(Point a, Point b)
 	{
@@ -309,6 +313,8 @@ namespace
 
 	bool OnPath(Point p)
 	{
+		if (SegmentDistance(p, {40, 55}, WorldTravel::VillageGate) < 2)
+			return true;
 		for (int i = 1; i < 8; ++i)
 			if (SegmentDistance(p, route[i - 1], route[i]) < 2.0f)
 				return true;
@@ -424,6 +430,17 @@ namespace
 		std::fill(std::begin(keys), std::end(keys), false);
 	}
 
+	void EnterRegion(FirstLevel::Region region,
+	                 FirstLevel::Region from = FirstLevel::Region::Village)
+	{
+		uint32_t seed = static_cast<uint32_t>(FrameClock::now().time_since_epoch().count());
+		firstLevel.Begin(seed, false, region, from);
+		inFirstLevel = true;
+		walking = false;
+		std::fill(std::begin(keys), std::end(keys), false);
+		lastFrame = FrameClock::now();
+	}
+
 	Point Target()
 	{
 		switch (stage)
@@ -441,6 +458,8 @@ namespace
 			return people[2].p;
 		case Shrine:
 			return shrine;
+		case Complete:
+			return dungeonGate ? dungeonGate->WorldPosition() : WorldTravel::VillageGate;
 		default:
 			return player;
 		}
@@ -455,7 +474,7 @@ namespace
 		                         L"호수 남쪽의 어부 미라 만나기",
 		                         L"호수 서쪽의 돌 제단 조사하기",
 		                         L"마을로 돌아가 엘린에게 이야기하기",
-		                         L"첫 탐험 완료 · L로 첫 사냥터 진입"};
+		                         L"첫 탐험 완료 · 동쪽 옛 수로 입구에서 E로 다음 여행"};
 		return list[(int)stage];
 	}
 
@@ -491,7 +510,7 @@ namespace
 		snapshot.sampledAt = std::chrono::duration_cast<std::chrono::milliseconds>(
 		                         std::chrono::system_clock::now().time_since_epoch())
 		                         .count();
-		snapshot.scene = inFirstLevel ? "first_level" : "tutorial";
+		snapshot.scene = inFirstLevel ? WorldTravel::Key(firstLevel.CurrentRegion()) : "tutorial";
 		snapshot.paused = paused;
 		MonitorVillage village;
 		village.id = "reedmere";
@@ -547,9 +566,13 @@ namespace
 				result = i;
 			}
 		}
-		const Point objects[] = {rune, fragment, shrine};
+		const Point objects[] = {rune,
+		                         fragment,
+		                         shrine,
+		                         dungeonGate ? dungeonGate->WorldPosition()
+		                                     : WorldTravel::VillageGate};
 
-		for (int i = 0; i < 3; ++i)
+		for (int i = 0; i < 4; ++i)
 		{
 			float d = Distance(player, objects[i]);
 
@@ -568,6 +591,11 @@ namespace
 
 		if (id < 0)
 			return;
+		if (id == PersonCount + 3)
+		{
+			EnterRegion(FirstLevel::Region::Passage);
+			return;
+		}
 
 		if (id == 0 && stage == Elder)
 			Talk(
@@ -888,6 +916,52 @@ namespace
 		float top = height * .53f + (bounds.minimum.y - camera.x - camera.y) * 11.5f;
 		float bottom = height * .53f + (bounds.maximum.y - camera.x - camera.y) * 11.5f;
 		return right > -180 && left < width + 180 && bottom > -180 && top < height + 180;
+	}
+
+	bool ForestClearing(Point p)
+	{
+		if (InLake(p, 2) || OnPath(p) || Distance(p, {20, 49}) < 16 || Distance(p, shrine) < 4 ||
+		    Distance(p, WorldTravel::VillageGate) < 7 || Distance(p, {67, 79}) < 12 ||
+		    Distance(p, {132, 107}) < 10)
+			return true;
+		for (const auto& house : houses)
+			if (Distance(p, house.p) < 5)
+				return true;
+		for (const auto& person : people)
+			if (Distance(p, person.home) < 5)
+				return true;
+		for (Point home : animalHomes)
+			if (Distance(p, home) < 2.5f)
+				return true;
+		for (Point fire : fires)
+			if (Distance(p, fire) < 3)
+				return true;
+		return false;
+	}
+
+	void BuildTutorialForest()
+	{
+		// Preserve the existing forest and fill unused ground without covering roads or landmarks.
+		for (int i = 0; i < 4400; ++i)
+		{
+			Point p = {3 + static_cast<float>((i * 37) % (MapWidth - 6)),
+			           3 + static_cast<float>((i * 23) % (MapHeight - 6))};
+			if (!ForestClearing(p))
+				trees.emplace_back(p, .8f + (i % 5) * .1f, i % 4 == 0 ? 1 : 0);
+		}
+		RebuildTreeSpatialData();
+		for (int y = -48; y < MapHeight + 48; y += 5)
+			for (int x = -48; x < MapWidth + 48; x += 5)
+			{
+				bool outside = x < 0 || y < 0 || x >= MapWidth || y >= MapHeight;
+				if (!outside && (x % 10 != 2 || y % 10 != 2))
+					continue;
+				Point p = {x + .6f * std::sin(y * 1.7f), y + .6f * std::cos(x * 2.3f)};
+				if (ForestClearing(p) || treeCollision.Blocks(p))
+					continue;
+				trees.emplace_back(p, 1.f, (x + y) % 3 == 0 ? 1 : 0);
+				treeCollision.Add(p);
+			}
 	}
 
 	void CastShadow(Point p, float radius, float objectHeight)
@@ -1348,6 +1422,14 @@ namespace
 					player.y += dy;
 				}
 				walking = walking || Distance(previousPosition, player) > .0001f;
+				if (forestTrail.ReturnIfLost(player, MapWidth, MapHeight))
+				{
+					walking = false;
+					camera = player;
+					travelNotice = L"숲에서 길을 잃고 한참 헤매다 익숙한 길로 돌아왔습니다.";
+					travelNoticeTime = 5;
+					std::fill(std::begin(keys), std::end(keys), false);
+				}
 			}
 		}
 	}
@@ -1400,8 +1482,8 @@ namespace
 	{
 		groundActors.SetLayer(ActorLayer::Ground);
 		effectActors.SetLayer(ActorLayer::Effect);
-		for (int y = 0; y < MapHeight; y += 8)
-			for (int x = 0; x < MapWidth; x += 8)
+		for (int y = -48; y < MapHeight + 48; y += 8)
+			for (int x = -48; x < MapWidth + 48; x += 8)
 			{
 				float shade = std::sin(x * .05f) * .024f + std::cos(y * .07f) * .02f;
 				PlacedActor(groundActors, {(float)x, (float)y})
@@ -1439,6 +1521,15 @@ namespace
 		path(ridgeRoute, 3, 1.4f);
 		path(frontierRoute, 6, 2.f);
 		path(northRoute, 4, 2.f);
+		const Point gatePath[] = {{40, 55}, WorldTravel::VillageGate};
+		path(gatePath, 2, 1.5f);
+		dungeonGate = &decorationActors.AddChild("DungeonEntrance", WorldTravel::VillageGate);
+		dungeonGate->SetDraw(
+		    [](Actor& actor, Renderer& r)
+		    {
+			    if (Visible(actor.WorldPosition()))
+				    WorldTravel::DrawGate(r, Project(actor.WorldPosition()), false);
+		    });
 		const Point returnPath[] = {{20, 45}, {45, 43}};
 		path(returnPath, 2, 1.6f);
 		PlacedActor(groundActors, {20, 49})
@@ -1678,7 +1769,7 @@ namespace
 		marker.SetUpdate(
 		    [](Actor& a, float)
 		    {
-			    a.SetVisible(stage != Complete);
+			    a.SetVisible(true);
 			    a.SetWorldPosition(Target());
 		    });
 		marker.SetDraw(
@@ -1747,8 +1838,9 @@ namespace
 				    left + a.p.x * scale, top + a.p.y * scale, 2, 2, {.65f, .72f, .42f, 1});
 		}
 
-		if (stage != Complete)
-			renderer->Ellipse(left + Target().x * scale, top + Target().y * scale, 5, 5, Gold);
+		renderer->Ellipse(left + Target().x * scale, top + Target().y * scale, 5, 5, Gold);
+		Point gate = dungeonGate ? dungeonGate->WorldPosition() : WorldTravel::VillageGate;
+		renderer->Rect(left + gate.x * scale - 4, top + gate.y * scale - 4, 8, 8, Teal);
 		renderer->Ellipse(left + player.x * scale, top + player.y * scale, 4, 4, Cream);
 		renderer->Text(left,
 		               top - 26,
@@ -1762,6 +1854,12 @@ namespace
 			renderer->Text(left + 15 * scale, top + 59 * scale, L"갈대여울 마을", Cream);
 			renderer->Text(left + 62 * scale, top + 89 * scale, L"동쪽 농가", Cream);
 			renderer->Text(left + 104 * scale, top + 114 * scale, L"옛 성터", Cream);
+			renderer->Text(
+			    left + gate.x * scale, top + gate.y * scale + 10, L"옛 수로 → 솔바람 분지", Teal);
+			renderer->Text(left + 5 * scale,
+			               top + MapHeight * scale - 28,
+			               L"깊은 숲 · 길을 잃으면 익숙한 길로 돌아옵니다",
+			               Cream);
 		}
 	}
 
@@ -1788,7 +1886,7 @@ namespace
 		renderer->Rect(22, height - 54.f, width - 44.f, 34, Panel);
 		renderer->Text(38,
 		               height - 49.f,
-		               L"WASD 이동   E 대화·조사   M 지도   L 첫 사냥터   P 후처리   Esc 일시정지",
+		               L"WASD 이동   E 대화·조사·입구 이용   M 지도   P 후처리   Esc 일시정지",
 		               Cream);
 		int nearbyId = Nearby();
 
@@ -1797,11 +1895,17 @@ namespace
 			std::wstring name = nearbyId < PersonCount        ? people[nearbyId].name
 			                    : nearbyId == PersonCount     ? L"오래된 표석"
 			                    : nearbyId == PersonCount + 1 ? L"지도 조각"
-			                                                  : L"호숫가의 제단";
+			                    : nearbyId == PersonCount + 2 ? L"호숫가의 제단"
+			                                                  : L"옛 수로로 들어가기";
 			renderer->Rect(width * .5f - 180, height - 105.f, 360, 38, Panel);
 			renderer->Text(width * .5f - 160, height - 99.f, L"[E] " + name, Gold);
 		}
 
+		if (travelNoticeTime > 0 && dialogue.empty() && !showMap && !paused)
+		{
+			renderer->Rect(22, height - 158.f, width - 44.f, 42, Panel);
+			renderer->Text(38, height - 150.f, travelNotice, Gold);
+		}
 		if (choice)
 		{
 			renderer->Rect(22, 147, 430, 38, Panel);
@@ -1910,6 +2014,9 @@ namespace
 	{
 		player = {18, 50};
 		camera = player;
+		forestTrail.lastSafe = player;
+		travelNotice.clear();
+		travelNoticeTime = 0;
 		playerFacing = 1;
 		stage = Elder;
 		choice = 0;
@@ -1939,7 +2046,7 @@ namespace
 		    L"지도 밖의 첫 걸음",
 		    {L"작은 마을 갈대여울. 숲 너머 호수에서 낯선 소리가 들려온다. 오늘은 그 목소리의 흔적을 찾아 떠나 보자.",
 		     L"WASD로 화면 방향에 맞춰 이동합니다. 주민이나 단서 가까이에서 E를 누르세요. 먼저 광장의 촌장 엘린을 찾아보세요.",
-		     L"첫 레벨을 바로 확인하려면 L을 누르세요. 튜토리얼 진행과 호수의 선택은 돌아왔을 때 유지됩니다."});
+		     L"동쪽 길의 돌문은 옛 수로 입구입니다. 가까이에서 E로 들어가면 반대편 솔바람 분지까지 여행할 수 있습니다."});
 	}
 
 	void KeyDown(unsigned char input, int, int)
@@ -1967,20 +2074,24 @@ namespace
 				else
 					keys[key] = true;
 				if (leave)
-					inFirstLevel = false;
+				{
+					FirstLevel::Exit exit = firstLevel.RequestedExit();
+					if (exit == FirstLevel::Exit::Village)
+					{
+						inFirstLevel = false;
+						playerActor.SetWorldPosition(WorldTravel::VillageLanding);
+						camera = player;
+						forestTrail.lastSafe = player;
+						walking = false;
+						travelNotice = L"옛 수로를 나와 갈대여울의 동쪽 길로 돌아왔습니다.";
+						travelNoticeTime = 5;
+					}
+					else
+						EnterRegion(exit, firstLevel.CurrentRegion());
+				}
 			}
 			return;
 		}
-		if (key == 'l' && !paused)
-		{
-			uint32_t seed = static_cast<uint32_t>(FrameClock::now().time_since_epoch().count());
-			firstLevel.Begin(seed);
-			inFirstLevel = true;
-			std::fill(std::begin(keys), std::end(keys), false);
-			lastFrame = FrameClock::now();
-			return;
-		}
-
 		if (key == 27)
 		{
 			paused = !paused;
@@ -2072,11 +2183,13 @@ namespace
 			return;
 		if (inFirstLevel)
 		{
-			firstLevel.Update(realDelta, keys);
+			if (firstLevel.Update(realDelta, keys))
+				std::fill(std::begin(keys), std::end(keys), false);
 			return;
 		}
 
 		elapsed += realDelta;
+		travelNoticeTime = std::max(0.f, travelNoticeTime - realDelta);
 		RebuildTreeSpatialData();
 		// Preserve ordinary slow frames, but discard long stalls such as a debugger stop.
 		float remaining = std::min(realDelta, .25f);
@@ -2149,38 +2262,7 @@ int main(int argc, char** argv)
 		return 1;
 	}
 
-	// Keep paths, people, camps and animal starting points clear in the expanded world.
-	for (int i = 0; i < 4400; ++i)
-	{
-		Point p = {3 + (float)((i * 37) % (MapWidth - 6)), 3 + (float)((i * 23) % (MapHeight - 6))};
-
-		if (InLake(p, 2) || OnPath(p) || Distance(p, {20, 49}) < 16 || Distance(p, shrine) < 4)
-			continue;
-
-		if (Distance(p, {67, 79}) < 12 || Distance(p, {132, 107}) < 10)
-			continue;
-		bool clear = false;
-
-		for (const auto& h : houses)
-			if (Distance(p, h.p) < 5)
-				clear = true;
-
-		for (const auto& person : people)
-			if (Distance(p, person.home) < 5)
-				clear = true;
-
-		for (Point home : animalHomes)
-			if (Distance(p, home) < 2.5f)
-				clear = true;
-
-		for (Point fire : fires)
-			if (Distance(p, fire) < 3)
-				clear = true;
-
-		if (clear)
-			continue;
-		trees.push_back({p, .8f + (i % 5) * .1f, i % 4 == 0 ? 1 : 0});
-	}
+	BuildTutorialForest();
 	BuildTutorialScene();
 	Reset();
 	monitorServer.Start();

@@ -1,6 +1,7 @@
 #pragma once
 #include "LevelModels.h"
 #include "SceneGraph.h"
+#include "WorldTravel.h"
 #include <array>
 #include <cstdint>
 #include <string>
@@ -10,6 +11,9 @@ struct MonitorSnapshot;
 class FirstLevel
 {
   public:
+	using Region = WorldTravel::Region;
+	using Exit = WorldTravel::Region;
+
 	FirstLevel();
 
 	SceneGraph& Scene()
@@ -17,9 +21,23 @@ class FirstLevel
 		return m_Scene;
 	}
 
-	void Begin(uint32_t seed, bool resetProgress = false);
-	void Update(float seconds, const bool* keys);
+	void Begin(uint32_t seed,
+	           bool resetProgress = false,
+	           Region region = Region::Passage,
+	           Region from = Region::Village);
+	bool Update(float seconds, const bool* keys);
 	bool Key(unsigned char key);
+
+	Exit RequestedExit() const
+	{
+		return m_RequestedExit;
+	}
+
+	Region CurrentRegion() const
+	{
+		return m_Region;
+	}
+
 	void Draw(Renderer& renderer, int width, int height, bool postprocess, bool paused);
 	void CaptureMonitorState(MonitorSnapshot& snapshot) const;
 
@@ -90,6 +108,12 @@ class FirstLevel
 	std::array<int, Columns * Rows> m_Distance;
 	std::vector<Enemy> m_Enemies;
 	std::vector<Drop> m_Drops;
+	std::vector<Actor*> m_Exits;
+	Actor* m_SurveyStone = nullptr;
+	Region m_Region = Region::Passage;
+	Exit m_RequestedExit = Exit::None;
+	WorldTravel::ReturnTrail m_ReturnTrail;
+	bool m_ReturnedFromEdge = false;
 	LevelModels m_Models;
 	Point m_Camera = {7, 7}, m_Aim = {1, 0};
 	int m_Level = 1, m_Experience = 0, m_Hp = 100, m_Coins = 0, m_Shards = 0;
@@ -110,6 +134,8 @@ class FirstLevel
 	Point Center(int cell) const;
 	bool Walkable(Point position) const;
 	bool ClearLine(Point from, Point to) const;
+	bool SafeExit(Point position, float margin = 9) const;
+	int NearbyExit() const;
 	void Move(Point& position, Point delta);
 	void RebuildFlow();
 	void Step(float dt, const bool* keys);

@@ -212,17 +212,25 @@ void FirstLevel::Generate()
 	{
 		int x = 1 + Random() % (Columns - 2), y = 1 + Random() % (Rows - 2);
 		int cell = y * Columns + x;
-		if (Distance(Center(cell), Camp) < 9 || m_Tiles[cell] != Tile::Ground)
+		if (SafeExit(Center(cell)) || m_Tiles[cell] != Tile::Ground)
 			continue;
 		m_Tiles[cell] = static_cast<Tile>(1 + Random() % 3);
 		if (!NeighborPathsConnected(cell))
 			m_Tiles[cell] = Tile::Ground;
 	}
+	for (auto& tile : m_Tiles)
+	{
+		if ((WorldTravel::IsDungeon(m_Region) && tile == Tile::Tree) ||
+		    (m_Region == Region::StoneRidge && tile == Tile::Water))
+			tile = Tile::Rock;
+		else if (m_Region == Region::MistShore && tile == Tile::Rock)
+			tile = Tile::Water;
+	}
 	m_Enemies.clear();
 	m_EnemyActors.ClearChildren();
 	std::vector<int> spawnCells;
 	for (int i = 0; i < Columns * Rows; ++i)
-		if (m_Tiles[i] == Tile::Ground && Distance(Center(i), Camp) > 12)
+		if (m_Tiles[i] == Tile::Ground && !SafeExit(Center(i), 12))
 			spawnCells.push_back(i);
 	// Deterministic shuffle; each spawn is a distinct, reachable cell center.
 	for (size_t i = spawnCells.size(); i > 1; --i)
@@ -248,8 +256,11 @@ void FirstLevel::Generate()
 	m_FlowTarget = -1;
 }
 
-void FirstLevel::Begin(uint32_t seed, bool resetProgress)
+void FirstLevel::Begin(uint32_t seed, bool resetProgress, Region region, Region from)
 {
+	m_Region = region;
+	m_RequestedExit = Exit::None;
+	m_ReturnedFromEdge = false;
 	m_Seed = seed ? seed : 1;
 	m_Random = m_Seed;
 	if (!m_Initialized || resetProgress)
@@ -264,7 +275,11 @@ void FirstLevel::Begin(uint32_t seed, bool resetProgress)
 	m_Models.Load();
 	m_Initialized = true;
 	m_Player = Camp;
-	m_Camera = Camp;
+	for (const auto& exit : WorldTravel::Exits(region))
+		if (exit.destination == from)
+			m_Player = exit.position;
+	m_Camera = m_Player;
+	m_ReturnTrail.lastSafe = m_Player;
 	m_Aim = {.70710678f, .70710678f};
 	m_Facing = 1;
 	m_Drops.clear();
@@ -279,7 +294,25 @@ void FirstLevel::Begin(uint32_t seed, bool resetProgress)
 	Generate();
 	BuildScene();
 	std::cout << "First level seed: " << m_Seed << "\n";
-	Message(L"슬라임·도적·궁수·타락한 사제를 사냥하고 전리품을 주워 3레벨에 도달하세요.");
+	Message(std::wstring(WorldTravel::Name(region)) + L" · M으로 출구와 목적지를 확인하세요.");
+}
+
+bool FirstLevel::SafeExit(Point position, float margin) const
+{
+	for (const auto& exit : WorldTravel::Exits(m_Region))
+		if (Distance(position, exit.position) <= margin)
+			return true;
+	return !WorldTravel::IsDungeon(m_Region) &&
+	       Distance(position, WorldTravel::SurveyStone) <= margin;
+}
+
+int FirstLevel::NearbyExit() const
+{
+	for (size_t i = 0; i < m_Exits.size(); ++i)
+		if (m_Exits[i] && Distance(m_Player, m_Exits[i]->WorldPosition()) < 2.5f &&
+		    ClearLine(m_Player, m_Exits[i]->WorldPosition()))
+			return static_cast<int>(i);
+	return -1;
 }
 
 bool FirstLevel::Walkable(Point p) const
@@ -422,7 +455,7 @@ bool FirstLevel::Key(unsigned char key)
 	if (m_Hp <= 0)
 	{
 		if (key == 'r')
-			Begin(m_Seed + 1, true);
+			Begin(m_Seed + 1, true, m_Region);
 		return false;
 	}
 	if (key == 'i')
@@ -434,8 +467,14 @@ bool FirstLevel::Key(unsigned char key)
 	if (key == 'e')
 	{
 		Pickup();
-		if (Distance(m_Player, Camp) < 2.5f)
+		int exit = NearbyExit();
+		if (exit >= 0)
+		{
+			m_RequestedExit = WorldTravel::Exits(m_Region)[exit].destination;
 			return true;
+		}
+		if (m_SurveyStone && Distance(m_Player, m_SurveyStone->WorldPosition()) < 2.5f)
+			Message(L"이정표에는 산맥·고원·해안의 표식이 있다. 다음 여행의 단서를 기록했다.");
 	}
 	return false;
 }
@@ -467,6 +506,17 @@ void FirstLevel::UpdatePlayer(float dt)
 		Move(m_Player, delta);
 		m_Walking = m_Walking || Distance(previous, m_Player) > .0001f;
 	}
+	if (m_ReturnTrail.ReturnIfLost(m_Player, Columns * TileSize, Rows * TileSize))
+	{
+		m_ReturnedFromEdge = true;
+		m_Walking = false;
+		m_FlowTarget = -1;
+		m_HitCooldown = std::max(m_HitCooldown, .6f);
+		Message(WorldTravel::IsDungeon(m_Region)
+		            ? L"어두운 통로에서 방향을 잃고 헤매다 익숙한 갈림길로 돌아왔습니다."
+		            : L"숲에서 길을 잃고 한참 헤매다 익숙한 길로 돌아왔습니다.");
+		return;
+	}
 	if (m_Input[' '] && m_AttackCooldown <= 0)
 		Attack();
 	if (Cell(m_Player) != m_FlowTarget)
@@ -495,7 +545,7 @@ void FirstLevel::UpdateEnemy(Enemy& enemy, float dt)
 	}
 	enemy.cooldown = std::max(0.f, enemy.cooldown - dt);
 	float distance = Distance(enemy.position, m_Player);
-	bool safe = Distance(m_Player, Camp) < 9;
+	bool safe = SafeExit(m_Player);
 	if (enemy.windup > 0)
 	{
 		enemy.windup -= dt;
@@ -601,11 +651,11 @@ void FirstLevel::UpdateEnemy(Enemy& enemy, float dt)
 	}
 }
 
-void FirstLevel::Update(float seconds, const bool* keys)
+bool FirstLevel::Update(float seconds, const bool* keys)
 {
 	m_Walking = false;
 	if (m_Hp <= 0 || m_Map || m_Stats)
-		return;
+		return false;
 	float remaining = std::min(seconds, .25f);
 	m_MessageTime = std::max(0.f, m_MessageTime - remaining);
 	while (remaining > 0 && m_Hp > 0)
@@ -614,7 +664,13 @@ void FirstLevel::Update(float seconds, const bool* keys)
 		remaining -= dt;
 		m_Time += dt;
 		Step(dt, keys);
+		if (m_ReturnedFromEdge)
+		{
+			m_ReturnedFromEdge = false;
+			return true;
+		}
 	}
+	return false;
 }
 
 Point FirstLevel::Project(Point p, int width, int height) const
@@ -716,6 +772,8 @@ void FirstLevel::BuildScene()
 {
 	m_StaticActors.ClearChildren();
 	m_PlayerActor.ClearChildren();
+	m_Exits.clear();
+	m_SurveyStone = nullptr;
 	// Aggregate ground tiles in 8x8 groups; props still have independent Actor ownership.
 	for (int cy = 0; cy < Rows; cy += 8)
 		for (int cx = 0; cx < Columns; cx += 8)
@@ -757,10 +815,16 @@ void FirstLevel::BuildScene()
 						    else
 						    {
 							    bool camp = Distance(p, Camp) < 9;
-							    r.Polygon(quad,
-							              camp ? Color{.48f, .40f, .27f, 1}
-							                   : Color{.25f, .34f, .18f, 1},
-							              camp ? Material::Dirt : Material::Grass);
+							    r.Polygon(
+							        quad,
+							        camp                               ? Color{.48f, .40f, .27f, 1}
+							        : WorldTravel::IsDungeon(m_Region) ? Color{.32f, .35f, .33f, 1}
+							        : m_Region == Region::StoneRidge   ? Color{.39f, .40f, .29f, 1}
+							        : m_Region == Region::MistShore    ? Color{.24f, .36f, .35f, 1}
+							                                           : Color{.25f, .34f, .18f, 1},
+							        camp                               ? Material::Dirt
+							        : WorldTravel::IsDungeon(m_Region) ? Material::Stone
+							                                           : Material::Grass);
 						    }
 					    }
 			    });
@@ -779,6 +843,54 @@ void FirstLevel::BuildScene()
 		}
 	ModelActor(m_StaticActors.AddChild("Campfire", {Camp.x + 1.5f, Camp.y - 1.5f}),
 	           LevelModel::Camp);
+	for (const auto& exit : WorldTravel::Exits(m_Region))
+	{
+		Actor& gate =
+		    m_StaticActors.AddChild("Exit/" + std::to_string(m_Exits.size()), exit.position);
+		m_Exits.push_back(&gate);
+		bool daylight = !WorldTravel::IsDungeon(exit.destination);
+		gate.SetDraw(
+		    [this, daylight](Actor& actor, Renderer& r)
+		    {
+			    Point screen = Project(actor.WorldPosition(), m_Width, m_Height);
+			    if (screen.x > -100 && screen.x < m_Width + 100 && screen.y > -50 &&
+			        screen.y < m_Height + 150)
+				    WorldTravel::DrawGate(r, screen, daylight);
+		    });
+	}
+	if (!WorldTravel::IsDungeon(m_Region))
+	{
+		m_SurveyStone = &m_StaticActors.AddChild("SurveyStone", WorldTravel::SurveyStone);
+		ModelActor(*m_SurveyStone, LevelModel::Rock);
+	}
+	for (int cy = -48; cy < Rows * 2 + 48; cy += 16)
+		for (int cx = -48; cx < Columns * 2 + 48; cx += 16)
+		{
+			if (cx >= 0 && cy >= 0 && cx < Columns * 2 && cy < Rows * 2)
+				continue;
+			Actor& border =
+			    m_StaticActors.AddChild("Boundary/" + std::to_string(cy) + "/" + std::to_string(cx),
+			                            {static_cast<float>(cx), static_cast<float>(cy)});
+			border.SetLayer(ActorLayer::Ground);
+			border.SetDraw(
+			    [this](Actor& actor, Renderer& r)
+			    {
+				    Point p = actor.WorldPosition();
+				    r.Polygon({Project(p, m_Width, m_Height),
+				               Project({p.x + 16, p.y}, m_Width, m_Height),
+				               Project({p.x + 16, p.y + 16}, m_Width, m_Height),
+				               Project({p.x, p.y + 16}, m_Width, m_Height)},
+				              WorldTravel::IsDungeon(m_Region) ? Color{.24f, .27f, .25f, 1}
+				                                               : Color{.20f, .29f, .17f, 1},
+				              WorldTravel::IsDungeon(m_Region) ? Material::Stone : Material::Grass);
+			    });
+			for (int y = 3; y < 16; y += 5)
+				for (int x = 3; x < 16; x += 5)
+					ModelActor(border.AddChild("Tree/" + std::to_string(y * 16 + x),
+					                           {static_cast<float>(x), static_cast<float>(y)}),
+					           WorldTravel::IsDungeon(m_Region) ? LevelModel::Rock
+					                                            : LevelModel::Tree);
+		}
 	for (size_t i = 0; i < m_Enemies.size(); ++i)
 	{
 		ModelActor(m_Enemies[i].actor, LevelModel::Slime, static_cast<int>(i));
@@ -847,7 +959,11 @@ void FirstLevel::Draw(Renderer& r, int width, int height, bool postprocess, bool
 void FirstLevel::DrawHud(Renderer& r, int width, int height, bool paused)
 {
 	r.Rect(15, 15, 520, 142, {.025f, .055f, .055f, .94f});
-	r.Text(30, 24, L"첫 레벨 · 갈대여울 외곽 숲", Gold);
+	r.Text(30,
+	       24,
+	       std::wstring(WorldTravel::Name(m_Region)) +
+	           (WorldTravel::IsDungeon(m_Region) ? L" · 고대 교역 통로" : L" · 탐험 지역"),
+	       Gold);
 	r.Text(30,
 	       51,
 	       L"Lv." + std::to_wstring(m_Level) + L"   체력 " + std::to_wstring(m_Hp) + L" / " +
@@ -866,8 +982,9 @@ void FirstLevel::DrawHud(Renderer& r, int width, int height, bool paused)
 	       Cream);
 	r.Text(30,
 	       126,
-	       m_Level >= 3 && m_Shards > 0 ? L"목표 달성! 야영지에서 E로 귀환 · 계속 사냥 가능"
-	                                    : L"목표: 3레벨 도달 + 탐험 결정 1개 획득",
+	       m_Level >= 3 && m_Shards > 0
+	           ? L"성장 목표 달성 · 출입구에서 E로 다음 지역 이동"
+	           : L"성장 목표: 3레벨 + 탐험 결정 1개 · 출구는 언제든 이용 가능",
 	       Gold);
 	r.Rect(15,
 	       static_cast<float>(height - 88),
@@ -876,7 +993,7 @@ void FirstLevel::DrawHud(Renderer& r, int width, int height, bool paused)
 	       {.025f, .055f, .055f, .94f});
 	r.Text(30,
 	       static_cast<float>(height - 78),
-	       L"WASD 이동 · Space 공격(유지 가능) · E 전리품 줍기/야영지 귀환",
+	       L"WASD 이동 · Space 공격(유지 가능) · E 전리품/출입구 상호작용",
 	       Cream);
 	r.Text(30,
 	       static_cast<float>(height - 49),
@@ -884,6 +1001,14 @@ void FirstLevel::DrawHud(Renderer& r, int width, int height, bool paused)
 	       Cream);
 	if (m_MessageTime > 0)
 		r.Text(30, 177, m_Message, Gold);
+	int nearbyExit = NearbyExit();
+	if (nearbyExit >= 0 && !m_Map && !m_Stats && !paused && m_Hp > 0)
+		r.Text(30,
+		       height - 120.f,
+		       std::wstring(L"[E] ") +
+		           WorldTravel::Name(WorldTravel::Exits(m_Region)[nearbyExit].destination) +
+		           L" 이동",
+		       Gold);
 	if (m_Map)
 	{
 		float scale = std::min((width - 100.f) / Columns, (height - 140.f) / Rows);
@@ -907,9 +1032,20 @@ void FirstLevel::DrawHud(Renderer& r, int width, int height, bool paused)
 		for (const auto& enemy : m_Enemies)
 			if (enemy.hp > 0)
 				mark(enemy.position, {1, .25f, .15f, 1});
-		mark(Camp, Gold);
+		for (size_t i = 0; i < m_Exits.size(); ++i)
+		{
+			Point position = m_Exits[i]->WorldPosition();
+			mark(position, i == 0 ? Gold : Color{.3f, 1, .85f, 1});
+			float labelX = std::min(left + position.x / 2 * scale, left + (Columns - 24) * scale);
+			r.Text(labelX,
+			       top + position.y / 2 * scale + 8,
+			       WorldTravel::Name(WorldTravel::Exits(m_Region)[i].destination),
+			       Cream);
+		}
+		if (m_SurveyStone)
+			mark(m_SurveyStone->WorldPosition(), {.8f, .7f, .4f, 1});
 		mark(m_Player, {1, 1, 1, 1});
-		r.Text(left, top - 30, L"M 닫기 · 흰색 나 / 금색 야영지 / 붉은색 적", Cream);
+		r.Text(left, top - 30, L"M 닫기 · 흰색: 나 / 노랑·청록: 출입구와 목적지 / 빨강: 적", Cream);
 	}
 	if (m_Stats)
 	{

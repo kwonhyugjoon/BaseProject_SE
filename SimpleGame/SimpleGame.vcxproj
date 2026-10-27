@@ -166,6 +166,7 @@
     <ClInclude Include="AssetCache.h" />
     <ClInclude Include="LevelModels.h" />
     <ClInclude Include="FirstLevel.h" />
+    <ClInclude Include="WorldTravel.h" />
     <ClInclude Include="MonitorState.h" />
     <ClInclude Include="MonitorServer.h" />
     <ClInclude Include="CharacterSprites.h" />

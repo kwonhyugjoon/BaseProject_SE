@@ -51,6 +51,9 @@
     <ClInclude Include="FirstLevel.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
+    <ClInclude Include="WorldTravel.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
     <ClInclude Include="MonitorState.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
