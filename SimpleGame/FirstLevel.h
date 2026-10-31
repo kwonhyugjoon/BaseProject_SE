@@ -7,6 +7,7 @@
 #include <string>
 
 struct MonitorSnapshot;
+class QuestJournal;
 
 class FirstLevel
 {
@@ -14,7 +15,7 @@ class FirstLevel
 	using Region = WorldTravel::Region;
 	using Exit = WorldTravel::Region;
 
-	FirstLevel();
+	explicit FirstLevel(QuestJournal& journal);
 
 	SceneGraph& Scene()
 	{
@@ -27,6 +28,11 @@ class FirstLevel
 	           Region from = Region::Village);
 	bool Update(float seconds, const bool* keys);
 	bool Key(unsigned char key);
+
+	bool CanOpenJournal() const
+	{
+		return !m_Map && !m_Stats && m_Hp > 0;
+	}
 
 	Exit RequestedExit() const
 	{
@@ -42,8 +48,8 @@ class FirstLevel
 	void CaptureMonitorState(MonitorSnapshot& snapshot) const;
 
   private:
-	static constexpr int Columns = 96;
-	static constexpr int Rows = 80;
+	static constexpr int Columns = WorldTravel::Columns;
+	static constexpr int Rows = WorldTravel::Rows;
 	static constexpr float TileSize = 2.f;
 	enum class Tile : unsigned char
 	{
@@ -95,6 +101,7 @@ class FirstLevel
 		int coins, shards;
 	};
 
+	QuestJournal& m_Journal;
 	SceneGraph m_Scene;
 	Actor& m_PlayerActor;
 	Actor& m_StaticActors;
@@ -115,7 +122,7 @@ class FirstLevel
 	WorldTravel::ReturnTrail m_ReturnTrail;
 	bool m_ReturnedFromEdge = false;
 	LevelModels m_Models;
-	Point m_Camera = {7, 7}, m_Aim = {1, 0};
+	Point m_Camera = WorldTravel::NearGate, m_Aim = {1, 0};
 	int m_Level = 1, m_Experience = 0, m_Hp = 100, m_Coins = 0, m_Shards = 0;
 	int m_Facing = 1, m_Kills = 0, m_FlowTarget = -1;
 	uint32_t m_Seed = 1, m_Random = 1;
@@ -135,6 +142,7 @@ class FirstLevel
 	bool Walkable(Point position) const;
 	bool ClearLine(Point from, Point to) const;
 	bool SafeExit(Point position, float margin = 9) const;
+	bool OnTravelRoad(Point position) const;
 	int NearbyExit() const;
 	void Move(Point& position, Point delta);
 	void RebuildFlow();

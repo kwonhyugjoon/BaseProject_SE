@@ -13,11 +13,14 @@ int main()
 	Reset();
 	dialogue.clear();
 	assert(dungeonGate && CanWalk(WorldTravel::VillageLanding));
+	for (const auto& person : people)
+		assert(CanWalk(person.home) && person.home.x > 24 && person.home.x < MapWidth - 24 &&
+		       person.home.y > 24 && person.home.y < MapHeight - 24);
 	assert(CanWalk(WorldTravel::VillageGate));
 	// All tutorial landmarks must remain connected after filling the forest.
 	std::vector<bool> reached(MapWidth * MapHeight);
 	std::queue<int> pending;
-	int start = 50 * MapWidth + 18;
+	int start = static_cast<int>(player.y) * MapWidth + static_cast<int>(player.x);
 	reached[start] = true;
 	pending.push(start);
 	while (!pending.empty())
@@ -38,12 +41,12 @@ int main()
 			pending.push(next);
 		}
 	}
-	for (Point target : {Point{18, 50},
-	                     Point{12, 29},
+	for (Point target : {VillagePoint({18, 50}),
+	                     people[1].p,
 	                     rune,
 	                     fragment,
 	                     shrine,
-	                     Point{45, 43},
+	                     people[2].p,
 	                     WorldTravel::VillageGate})
 		assert(reached[static_cast<int>(target.y) * MapWidth + static_cast<int>(target.x)]);
 	KeyDown('l', 0, 0);
@@ -51,8 +54,9 @@ int main()
 	KeyDown('e', 0, 0);
 	assert(!inFirstLevel);
 	dialogue.clear();
-	stage = Shrine;
-	choice = 2;
+	for (Stage expected : {Elder, Scout, Rune, Fragment, Fisher})
+		assert(questJournal.CompleteStep(expected));
+	assert(questJournal.ChooseLake(2));
 	playerActor.SetWorldPosition(WorldTravel::VillageLanding);
 	assert(Nearby() == PersonCount + 3);
 	KeyDown('e', 0, 0);
@@ -95,7 +99,7 @@ int main()
 	assert(Distance(returned, WorldTravel::FarGate) < .001f);
 	expeditionPlayer->SetWorldPosition(WorldTravel::NearGate);
 	KeyDown('e', 0, 0);
-	assert(!inFirstLevel && stage == Shrine && choice == 2);
+	assert(!inFirstLevel && stage == Return && choice == 2);
 	assert(Distance(player, WorldTravel::VillageLanding) < .001f);
 	assert(Distance(camera, player) < .001f && !keys['e']);
 	// Pause/map/dialogue block entrance input.
@@ -114,6 +118,6 @@ int main()
 	UpdatePlayer(1.f / 120);
 	assert(Distance(player, WorldTravel::VillageLanding) < .001f);
 	assert(CanWalk(player) && !keys['a'] && travelNoticeTime > 0);
-	assert(stage == Shrine && choice == 2);
+	assert(stage == Return && choice == 2);
 	puts("PASS: tutorial routes, E-only round trip, overlays, history, input and forest return.");
 }

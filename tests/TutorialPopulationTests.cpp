@@ -7,7 +7,7 @@
 
 int main()
 {
-	assert(PersonCount == 38 && MapWidth == 304 && MapHeight == 264);
+	assert(PersonCount == 38 && MapWidth == 192 && MapHeight == 176);
 	BuildTutorialScene();
 	Reset();
 	MonitorSnapshot snapshot = CaptureMonitorState();
@@ -22,9 +22,11 @@ int main()
 	paused = true;
 	assert(CaptureMonitorState().npcs[0].state == "paused");
 	paused = false;
-	choice = 2;
+	for (Stage expected : {Elder, Scout, Rune, Fragment, Fisher})
+		assert(questJournal.CompleteStep(expected));
+	assert(questJournal.ChooseLake(2));
 	assert(CaptureMonitorState().villages[0].lakeChoice == "close");
-	choice = 0;
+	questJournal.Reset();
 	dialogue.clear();
 	for (int i = 3; i < PersonCount; ++i)
 	{

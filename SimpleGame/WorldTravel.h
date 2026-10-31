@@ -3,11 +3,13 @@
 
 namespace WorldTravel
 {
-	constexpr Point VillageGate = {49, 59};
-	constexpr Point VillageLanding = {47.5f, 59};
-	constexpr Point NearGate = {7, 7};
-	constexpr Point FarGate = {185, 153};
-	constexpr Point SurveyStone = {97, 81};
+	constexpr Point VillageGate = {97, 99};
+	constexpr Point VillageLanding = {95.5f, 99};
+	constexpr int Columns = 48, Rows = 40;
+	constexpr int VisualMargin = 96;
+	constexpr Point NearGate = {23, 23};
+	constexpr Point FarGate = {73, 57};
+	constexpr Point SurveyStone = {49, 41};
 
 	enum class Region
 	{
@@ -17,7 +19,8 @@ namespace WorldTravel
 		Basin,
 		EchoHall,
 		StoneRidge,
-		MistShore
+		MistShore,
+		Count
 	};
 
 	struct ExitLink
@@ -34,14 +37,14 @@ namespace WorldTravel
 		    {{NearGate, Region::Village}, {FarGate, Region::Basin}},
 		    {{NearGate, Region::Passage}, {FarGate, Region::EchoHall}},
 		    {{NearGate, Region::Basin},
-		     {{185, 81}, Region::StoneRidge},
-		     {{97, 153}, Region::MistShore}},
+		     {{73, 41}, Region::StoneRidge},
+		     {{49, 57}, Region::MistShore}},
 		    {{NearGate, Region::EchoHall}},
 		    {{NearGate, Region::EchoHall}}};
 		return links[static_cast<int>(region)];
 	}
 
-	inline bool IsDungeon(Region region)
+	inline bool IsPassage(Region region)
 	{
 		return region == Region::Passage || region == Region::EchoHall;
 	}
@@ -50,9 +53,9 @@ namespace WorldTravel
 	{
 		static const wchar_t* names[] = {L"",
 		                                 L"갈대여울",
-		                                 L"옛 드워프 수로",
+		                                 L"옛 드워프 교역로",
 		                                 L"솔바람 분지",
-		                                 L"메아리 회랑",
+		                                 L"메아리 숲길",
 		                                 L"돌등성이 전초지",
 		                                 L"안개 호숫가"};
 		return names[static_cast<int>(region)];

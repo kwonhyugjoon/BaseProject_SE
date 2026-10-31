@@ -7,6 +7,7 @@ This program is distributed WITHOUT ANY WARRANTY.
 #include "stdafx.h"
 #include "Renderer.h"
 #include "FirstLevel.h"
+#include "QuestJournal.h"
 #include "SceneGraph.h"
 #include "TreeCollisionGrid.h"
 #include "MonitorState.h"
@@ -23,7 +24,14 @@ This program is distributed WITHOUT ANY WARRANTY.
 namespace
 {
 	const float Pi = 3.14159265f;
-	const int MapWidth = 304, MapHeight = 264;
+	const int MapWidth = 192, MapHeight = 176;
+
+	Point VillagePoint(Point p)
+	{
+		return {p.x <= 76 ? p.x + 48 : 124 + (p.x - 76) * .18f,
+		        p.y <= 66 ? p.y + 40 : 106 + (p.y - 66) * .18f};
+	}
+
 	const Color Cream = {.94f, .90f, .76f, 1}, Gold = {.98f, .73f, .36f, 1};
 	const Color Teal = {.40f, .89f, .83f, 1}, Panel = {.035f, .075f, .085f, .94f};
 	Renderer* renderer = nullptr;
@@ -32,7 +40,7 @@ namespace
 	Actor& houseActors = tutorialScene.World().AddChild("Houses");
 	Actor& treeActors = tutorialScene.World().AddChild("Trees");
 	Actor& peopleActors = tutorialScene.World().AddChild("People");
-	Actor& playerActor = tutorialScene.World().AddChild("Player", {18, 50});
+	Actor& playerActor = tutorialScene.World().AddChild("Player", VillagePoint({18, 50}));
 	Actor& relicActors = tutorialScene.World().AddChild("Relics");
 	Actor& animalActors = tutorialScene.World().AddChild("Animals");
 	Actor& decorationActors = tutorialScene.World().AddChild("Decorations");
@@ -93,7 +101,8 @@ namespace
 		                      position);
 	}
 
-	FirstLevel firstLevel;
+	QuestJournal questJournal;
+	FirstLevel firstLevel(questJournal);
 	MonitorServer monitorServer;
 	bool inFirstLevel = false;
 	int width = 1280, height = 800;
@@ -102,24 +111,17 @@ namespace
 	using FrameClock = std::chrono::steady_clock;
 	FrameClock::time_point lastFrame;
 	Point& player = playerActor.Position();
-	Point camera = {18, 50};
+	Point camera = player;
 	bool walking = false, postprocess = true;
 	int playerFacing = 1;
 
-	enum Stage
-	{
-		Elder,
-		Scout,
-		Rune,
-		Fragment,
-		Fisher,
-		Shrine,
-		Return,
-		Complete
-	};
-
-	Stage stage = Elder;
-	int choice = 0; // 1: listen; 2: close. Session-local world history.
+	using Stage = QuestJournal::Stage;
+	constexpr Stage Elder = Stage::Elder, Scout = Stage::Scout, Rune = Stage::Rune;
+	constexpr Stage Fragment = Stage::Fragment, Fisher = Stage::Fisher, Shrine = Stage::Shrine;
+	constexpr Stage Return = Stage::Return, Complete = Stage::Complete;
+	// Read-only village aliases refer to the shared session record.
+	const Stage& stage = questJournal.TutorialStage();
+	const int& choice = questJournal.LakeChoice();
 	bool choosing = false;
 	std::vector<std::wstring> dialogue;
 	size_t page = 0;
@@ -237,15 +239,15 @@ namespace
 
 	std::vector<Tree> trees;
 	TreeCollisionGrid treeCollision(MapWidth, MapHeight);
-	const Point route[] = {
+	Point route[] = {
 	    {18, 50}, {20, 45}, {12, 29}, {21, 11}, {34, 13}, {38, 38}, {45, 43}, {43, 24}};
-	const Point outerRoute[] = {{20, 49}, {40, 55}, {62, 64}, {76, 85}, {106, 96}, {132, 108}};
-	const Point ridgeRoute[] = {{62, 64}, {94, 48}, {124, 36}};
-	const Point frontierRoute[] = {
+	Point outerRoute[] = {{20, 49}, {40, 55}, {62, 64}, {76, 85}, {106, 96}, {132, 108}};
+	Point ridgeRoute[] = {{62, 64}, {94, 48}, {124, 36}};
+	Point frontierRoute[] = {
 	    {132, 108}, {164, 122}, {192, 145}, {224, 168}, {252, 198}, {280, 226}};
-	const Point northRoute[] = {{124, 36}, {180, 64}, {238, 84}, {252, 198}};
-	const Point ruins[] = {{128, 104}, {131, 103}, {134, 105}, {129, 110}, {135, 111}};
-	const Point fires[] = {{23, 47}, {37, 52}, {72, 80}, {100, 90}};
+	Point northRoute[] = {{124, 36}, {180, 64}, {238, 84}, {252, 198}};
+	Point ruins[] = {{128, 104}, {131, 103}, {134, 105}, {129, 110}, {135, 111}};
+	Point fires[] = {{23, 47}, {37, 52}, {72, 80}, {100, 90}};
 
 	struct Animal
 	{
@@ -270,21 +272,21 @@ namespace
 	};
 
 	std::vector<Animal> animals;
-	const Point animalHomes[] = {{18, 23},
-	                             {30, 21},
-	                             {40, 36},
-	                             {59, 56},
-	                             {79, 37},
-	                             {92, 67},
-	                             {116, 43},
-	                             {128, 54},
-	                             {134, 91},
-	                             {112, 112},
-	                             {62, 111},
-	                             {35, 94},
-	                             {81, 102},
-	                             {143, 116},
-	                             {99, 23}};
+	Point animalHomes[] = {{18, 23},
+	                       {30, 21},
+	                       {40, 36},
+	                       {59, 56},
+	                       {79, 37},
+	                       {92, 67},
+	                       {116, 43},
+	                       {128, 54},
+	                       {134, 91},
+	                       {112, 112},
+	                       {62, 111},
+	                       {35, 94},
+	                       {81, 102},
+	                       {143, 116},
+	                       {99, 23}};
 	Actor& runeActor = relicActors.AddChild("Rune", {21, 11});
 	Actor& fragmentActor = relicActors.AddChild("Fragment", {34, 13});
 	Actor& shrineActor = relicActors.AddChild("Shrine", {43, 24});
@@ -313,7 +315,7 @@ namespace
 
 	bool OnPath(Point p)
 	{
-		if (SegmentDistance(p, {40, 55}, WorldTravel::VillageGate) < 2)
+		if (SegmentDistance(p, VillagePoint({40, 55}), WorldTravel::VillageGate) < 2)
 			return true;
 		for (int i = 1; i < 8; ++i)
 			if (SegmentDistance(p, route[i - 1], route[i]) < 2.0f)
@@ -332,12 +334,12 @@ namespace
 		for (int i = 1; i < 4; ++i)
 			if (SegmentDistance(p, northRoute[i - 1], northRoute[i]) < 2.5f)
 				return true;
-		return SegmentDistance(p, {20, 45}, {45, 43}) < 2.0f;
+		return SegmentDistance(p, VillagePoint({20, 45}), VillagePoint({45, 43})) < 2.0f;
 	}
 
 	bool InLake(Point p, float margin = 0)
 	{
-		Point center = lakeActor ? lakeActor->WorldPosition() : Point{57, 28};
+		Point center = lakeActor ? lakeActor->WorldPosition() : VillagePoint({57, 28});
 		float x = (p.x - center.x) / (12 + margin), y = (p.y - center.y) / (10 + margin);
 		return x * x + y * y < 1;
 	}
@@ -435,6 +437,7 @@ namespace
 	{
 		uint32_t seed = static_cast<uint32_t>(FrameClock::now().time_since_epoch().count());
 		firstLevel.Begin(seed, false, region, from);
+		questJournal.RecordTravel(from, region);
 		inFirstLevel = true;
 		walking = false;
 		std::fill(std::begin(keys), std::end(keys), false);
@@ -459,6 +462,8 @@ namespace
 		case Shrine:
 			return shrine;
 		case Complete:
+			if (questJournal.NextDestination() == WorldTravel::Region::None)
+				return player;
 			return dungeonGate ? dungeonGate->WorldPosition() : WorldTravel::VillageGate;
 		default:
 			return player;
@@ -467,15 +472,7 @@ namespace
 
 	const wchar_t* Objective()
 	{
-		const wchar_t* list[] = {L"광장에서 촌장 엘린과 대화하기",
-		                         L"숲길을 따라 숲지기 로안 만나기",
-		                         L"숲 안쪽의 오래된 표석 조사하기",
-		                         L"동쪽 공터에서 지도 조각 조사하기",
-		                         L"호수 남쪽의 어부 미라 만나기",
-		                         L"호수 서쪽의 돌 제단 조사하기",
-		                         L"마을로 돌아가 엘린에게 이야기하기",
-		                         L"첫 탐험 완료 · 동쪽 옛 수로 입구에서 E로 다음 여행"};
-		return list[(int)stage];
+		return questJournal.Objective();
 	}
 
 	std::string PersonMonitorState(int index)
@@ -489,7 +486,7 @@ namespace
 			return "paused";
 		if (!dialogue.empty() && speaker == person.name)
 			return "talking";
-		if (!dialogue.empty() || choosing || showMap)
+		if (!dialogue.empty() || choosing || showMap || questJournal.IsOpen())
 			return "waiting";
 		if (index < 3)
 			return "standing";
@@ -606,37 +603,37 @@ namespace
 			     L"서두르지 않아도 돼. 주민들의 이야기도 들어 보게. WASD로 걷고, 가까이 다가가 E로 말을 걸면 되네."},
 			    []
 			    {
-				    stage = Scout;
+				    questJournal.CompleteStep(Elder);
 			    });
 		else if (id == 1 && stage == Scout)
 			Talk(
 			    L"숲지기 로안",
 			    {L"그 지도에 새겨진 모양… 숲 안쪽 표석에서도 봤어. 오래된 길을 따라 북쪽으로 가 봐.",
-			     L"동쪽 옛 수로도 같은 돌로 쌓였어. 드워프의 교역 통로였다지만 지금은 도적들이 지름길로 써. 흔적부터 살펴봐.",
+			     L"동쪽 옛 교역로도 같은 돌로 쌓였어. 드워프의 교역 통로였다지만 지금은 도적들이 지름길로 써. 흔적부터 살펴봐.",
 			     L"표석 옆에는 버려진 야영지도 있어. 나무 사이의 불빛을 따라가면 길을 잃지 않을 거야. M으로 지도를 볼 수도 있어."},
 			    []
 			    {
-				    stage = Rune;
+				    questJournal.CompleteStep(Scout);
 			    });
 		else if (id == PersonCount && stage == Rune)
 			Talk(
 			    L"오래된 표석",
 			    {L"이끼 아래에 세 개의 물결과 문처럼 생긴 무늬가 있다. 정교한 홈은 자연적으로 생긴 것이 아니다.",
-			     L"문 아래에 '건너온 이에게 길을, 돌아가는 이에게 표식을'이라 새겨져 있다. 작은 홈들은 동쪽 수로를 가리킨다.",
+			     L"문 아래에 '건너온 이에게 길을, 돌아가는 이에게 표식을'이라 새겨져 있다. 작은 홈들은 동쪽 교역로를 가리킨다.",
 			     L"동쪽 공터의 천 조각에도 같은 무늬가 보인다. 그곳을 살펴보자."},
 			    []
 			    {
-				    stage = Fragment;
+				    questJournal.CompleteStep(Rune);
 			    });
 		else if (id == PersonCount + 1 && stage == Fragment)
 			Talk(
 			    L"젖은 지도 조각",
 			    {L"버려진 야영지에서 지도의 나머지 조각을 찾았다. 선을 맞추자 길은 호수 한가운데까지 이어진다.",
-			     L"뒷면에는 '수로 건너 솔바람 분지, 세 갈래 길'과 수정 가루가 묻어 있다. 누군가는 이 길을 실제로 걸었다.",
+			     L"뒷면에는 '교역로 건너 솔바람 분지, 세 갈래 길'과 수정 가루가 묻어 있다. 누군가는 이 길을 실제로 걸었다.",
 			     L"이곳에 온 사람은 보물을 찾았던 걸까, 누군가를 만나려 했던 걸까? 남쪽 호숫가의 어부에게 물어보자."},
 			    []
 			    {
-				    stage = Fisher;
+				    questJournal.CompleteStep(Fragment);
 			    });
 		else if (id == 2 && stage == Fisher)
 			Talk(
@@ -646,7 +643,7 @@ namespace
 			     L"응답할지, 종을 잠재울지는 네가 정해. 우린 아직 저 존재가 누군지 모르니까. 네 선택을 마을에도 알려 줘."},
 			    []
 			    {
-				    stage = Shrine;
+				    questJournal.CompleteStep(Fisher);
 			    });
 		else if (id == PersonCount + 2 && stage == Shrine)
 			Talk(
@@ -665,22 +662,22 @@ namespace
 			         ? L"호수에 불빛이 돌아왔군. 미라도 꿈속의 소리가 한결 가까워졌다고 하더군. 네가 문을 두드린 모양이야."
 			         : L"호수가 조용해졌군. 미라는 오늘 오랜만에 푹 잘 수 있을 것 같다고 하더군. 네가 잠시 거리를 두기로 했구나.",
 			     L"우리가 아는 전설과 실제 모습은 다를 수 있겠지. 네가 본 것과 선택한 일은 이 마을이 기억하겠네.",
-			     L"지도는 가지고 가게. 동쪽 옛 수로를 지나면 솔바람 분지야. 도적을 조심하고, 돌에 새긴 다음 이정표를 찾아보게."},
+			     L"지도는 가지고 가게. 동쪽 옛 교역로를 지나면 솔바람 분지야. 도적을 조심하고, 돌에 새긴 다음 이정표를 찾아보게."},
 			    []
 			    {
-				    stage = Complete;
+				    questJournal.CompleteStep(Return);
 				    completedAt = elapsed;
 			    });
 		else if (id == 0)
 			Talk(
 			    people[id].name,
 			    {choice
-			         ? L"네가 호수에 내린 선택을 이웃들과 나누고 있네. 옛 수로의 길은 어느 선택을 했든 열려 있으니 여행은 계속해도 좋네."
+			         ? L"네가 호수에 내린 선택을 이웃들과 나누고 있네. 옛 교역로의 길은 어느 선택을 했든 열려 있으니 여행은 계속해도 좋네."
 			         : L"숲길은 마을 북쪽에 있네. 지도에 표시된 길을 따라가 보게. 서두를 필요는 없어."});
 		else if (id == 1)
 			Talk(
 			    people[id].name,
-			    {L"표석과 수로의 표식을 기억해. 깊은 숲에서 같은 나무만 보이면 길을 잃은 거야. 헤매다 아는 길로 돌아오기도 하지."});
+			    {L"표석과 교역로의 표식을 기억해. 깊은 숲에서 같은 나무만 보이면 길을 잃은 거야. 헤매다 아는 길로 돌아오기도 하지."});
 		else if (id == 2)
 			Talk(
 			    people[id].name,
@@ -692,7 +689,7 @@ namespace
 			Talk(
 			    people[id].name,
 			    {L"여행자는 돌아올 힘도 남겨 두어야 해. 이 세계에서 회복과 부활에는 대가가 따르니까.",
-			     L"오늘의 숲길에는 싸울 일이 없을 거야. 천천히 둘러보고 와. 자세한 치료 규칙은 이후의 여행에서 배우게 될 거야."});
+			     L"마을 주변은 경비대가 지키지만 교역길에서는 도적을 조심해. 돌아올 힘도 남겨 둬. 자세한 치료 규칙은 이후에 배우게 될 거야."});
 		else if (id == 4)
 			Talk(
 			    people[id].name,
@@ -714,14 +711,14 @@ namespace
 		else if (id == 8)
 			Talk(
 			    people[id].name,
-			    {L"난 솔바람 분지를 지나 산맥으로 갈 거야. 옛 수로는 마을과 분지를 잇는 길이지. 너도 통로 안의 두 출구를 잘 살펴봐."});
+			    {L"난 솔바람 분지를 지나 산맥으로 갈 거야. 옛 교역로는 마을과 분지를 잇는 길이지. 너도 통로 안의 두 출구를 잘 살펴봐."});
 		else if (id >= 18 && id < PersonCount)
 		{
 			const wchar_t* lines[] = {
-			    L"옛 수로의 도적은 교역길을 장악하려는 자들이야. 통로 반대편은 솔바람 분지로 이어져.",
+			    L"옛 교역로의 도적은 교역길을 장악하려는 자들이야. 통로 반대편은 솔바람 분지로 이어져.",
 			    L"일손을 놓고 잠시 주변을 둘러보는 중이야.",
 			    L"숲의 빈터를 벗어나면 길이 자꾸 꼬여. 표석을 따라가야 다른 지역으로 넘어갈 수 있어.",
-			    L"수로의 사제들은 수정의 목소리를 좇다 도적과 손잡았어. 마을의 순례자와는 달라. 그들의 치유 주문을 조심해."};
+			    L"교역로의 사제들은 수정의 목소리를 좇다 도적과 손잡았어. 마을의 순례자와는 달라. 그들의 치유 주문을 조심해."};
 			Talk(people[id].name, {lines[(id - 18) % 4]});
 		}
 		else if (id >= 9 && id < 18)
@@ -745,9 +742,9 @@ namespace
 
 	void MakeChoice(int value)
 	{
-		choice = value;
+		if (!questJournal.ChooseLake(value))
+			return;
 		choosing = false;
-		stage = Return;
 		Talk(
 		    L"세계에 남긴 흔적",
 		    {value == 1
@@ -772,6 +769,76 @@ namespace
 			if (Distance(p, ruin->Position()) < .85f)
 				return false;
 		return true;
+	}
+
+	void CompactVillageLayout()
+	{
+		static bool compacted = false;
+		if (compacted)
+			return;
+		auto remap = [](auto& points)
+		{
+			for (Point& point : points)
+				point = VillagePoint(point);
+		};
+		remap(route);
+		remap(outerRoute);
+		remap(ridgeRoute);
+		remap(frontierRoute);
+		remap(northRoute);
+		remap(ruins);
+		remap(fires);
+		remap(animalHomes);
+		for (int i = 0; i < HouseCount; ++i)
+		{
+			Point position = VillagePoint(houses[i].p);
+			bool overlap = true;
+			while (overlap)
+			{
+				overlap = false;
+				for (int j = 0; j < i; ++j)
+					if (std::abs(position.x - houses[j].p.x) <
+					        (houses[i].w + houses[j].w) * .5f + .8f &&
+					    std::abs(position.y - houses[j].p.y) <
+					        (houses[i].d + houses[j].d) * .5f + .8f)
+					{
+						position.x += std::max(houses[i].w, houses[j].w) + 1;
+						overlap = true;
+						break;
+					}
+			}
+			houses[i].actor.SetWorldPosition(position);
+		}
+		for (Actor* relic : {&runeActor, &fragmentActor, &shrineActor})
+			relic->SetWorldPosition(VillagePoint(relic->WorldPosition()));
+		for (int i = 0; i < PersonCount; ++i)
+		{
+			Point home = VillagePoint(people[i].home);
+			bool placed = false;
+			for (int ring = 0; ring <= 16 && !placed; ++ring)
+				for (int x = -ring; x <= ring && !placed; ++x)
+					for (int y = -ring; y <= ring; ++y)
+					{
+						if (std::max(std::abs(x), std::abs(y)) != ring)
+							continue;
+						Point candidate = {home.x + x * .5f, home.y + y * .5f};
+						if (!CanWalk(candidate))
+							continue;
+						bool clear = true;
+						for (Point ruin : ruins)
+							clear = clear && Distance(candidate, ruin) >= 1.4f;
+						for (int j = 0; j < i; ++j)
+							clear = clear && Distance(candidate, people[j].home) >= 1.5f;
+						if (!clear)
+							continue;
+						home = candidate;
+						placed = true;
+						break;
+					}
+			people[i].home = home;
+			people[i].actor.SetWorldPosition(home);
+		}
+		compacted = true;
 	}
 
 	void UpdatePerson(int index, float dt)
@@ -920,9 +987,9 @@ namespace
 
 	bool ForestClearing(Point p)
 	{
-		if (InLake(p, 2) || OnPath(p) || Distance(p, {20, 49}) < 16 || Distance(p, shrine) < 4 ||
-		    Distance(p, WorldTravel::VillageGate) < 7 || Distance(p, {67, 79}) < 12 ||
-		    Distance(p, {132, 107}) < 10)
+		if (InLake(p, 2) || OnPath(p) || Distance(p, VillagePoint({20, 49})) < 16 ||
+		    Distance(p, shrine) < 4 || Distance(p, WorldTravel::VillageGate) < 7 ||
+		    Distance(p, VillagePoint({67, 79})) < 12 || Distance(p, VillagePoint({132, 107})) < 10)
 			return true;
 		for (const auto& house : houses)
 			if (Distance(p, house.p) < 5)
@@ -941,8 +1008,9 @@ namespace
 
 	void BuildTutorialForest()
 	{
+		CompactVillageLayout();
 		// Preserve the existing forest and fill unused ground without covering roads or landmarks.
-		for (int i = 0; i < 4400; ++i)
+		for (int i = 0; i < 4400 * MapWidth * MapHeight / (304 * 264); ++i)
 		{
 			Point p = {3 + static_cast<float>((i * 37) % (MapWidth - 6)),
 			           3 + static_cast<float>((i * 23) % (MapHeight - 6))};
@@ -950,11 +1018,13 @@ namespace
 				trees.emplace_back(p, .8f + (i % 5) * .1f, i % 4 == 0 ? 1 : 0);
 		}
 		RebuildTreeSpatialData();
-		for (int y = -48; y < MapHeight + 48; y += 5)
-			for (int x = -48; x < MapWidth + 48; x += 5)
+		for (int y = -WorldTravel::VisualMargin; y < MapHeight + WorldTravel::VisualMargin; y += 5)
+			for (int x = -WorldTravel::VisualMargin; x < MapWidth + WorldTravel::VisualMargin;
+			     x += 5)
 			{
 				bool outside = x < 0 || y < 0 || x >= MapWidth || y >= MapHeight;
-				if (!outside && (x % 10 != 2 || y % 10 != 2))
+				if (!outside && ((x + WorldTravel::VisualMargin) % 10 != 0 ||
+				                 (y + WorldTravel::VisualMargin) % 10 != 0))
 					continue;
 				Point p = {x + .6f * std::sin(y * 1.7f), y + .6f * std::cos(x * 2.3f)};
 				if (ForestClearing(p) || treeCollision.Blocks(p))
@@ -1339,7 +1409,8 @@ namespace
 			renderer->SoftEllipse(p.x, p.y, 17, 8, {.75f, .88f, .67f, .36f});
 		bool moving = hero ? walking : people[index].moving;
 		float breath = moving ? 0 : std::sin(elapsed * 1.8f + index) * .65f;
-		int frame = moving ? (int)(elapsed * 10) % 8 : 8;
+		float cadence = hero && keys[VK_SHIFT] ? 20.f : 10.f;
+		int frame = moving ? (int)(elapsed * cadence) % 8 : 8;
 		renderer->Character(
 		    p.x, p.y + breath, hero ? playerFacing : people[index].facing, frame, coat);
 		if (!hero && index >= 3 && people[index].phase == 2)
@@ -1408,8 +1479,9 @@ namespace
 				Point previousPosition = player;
 				playerFacing = std::abs(sx) > std::abs(sy) ? (sx > 0 ? 0 : 2) : (sy > 0 ? 1 : 3);
 
-				// Normalize screen input before inverse projection (84 pixels/second).
-				float vx = sx / len * 84.f * dt, vy = sy / len * 84.f * dt;
+				// Normalize screen input before inverse projection; Shift doubles travel speed.
+				float speed = keys[VK_SHIFT] ? 168.f : 84.f;
+				float vx = sx / len * speed * dt, vy = sy / len * speed * dt;
 				float dx = (vx / 23.f + vy / 11.5f) * .5f, dy = (vy / 11.5f - vx / 23.f) * .5f;
 
 				if (CanWalk({player.x + dx, player.y}))
@@ -1480,10 +1552,12 @@ namespace
 
 	void BuildTutorialScene()
 	{
+		CompactVillageLayout();
 		groundActors.SetLayer(ActorLayer::Ground);
 		effectActors.SetLayer(ActorLayer::Effect);
-		for (int y = -48; y < MapHeight + 48; y += 8)
-			for (int x = -48; x < MapWidth + 48; x += 8)
+		for (int y = -WorldTravel::VisualMargin; y < MapHeight + WorldTravel::VisualMargin; y += 8)
+			for (int x = -WorldTravel::VisualMargin; x < MapWidth + WorldTravel::VisualMargin;
+			     x += 8)
 			{
 				float shade = std::sin(x * .05f) * .024f + std::cos(y * .07f) * .02f;
 				PlacedActor(groundActors, {(float)x, (float)y})
@@ -1521,30 +1595,30 @@ namespace
 		path(ridgeRoute, 3, 1.4f);
 		path(frontierRoute, 6, 2.f);
 		path(northRoute, 4, 2.f);
-		const Point gatePath[] = {{40, 55}, WorldTravel::VillageGate};
+		const Point gatePath[] = {VillagePoint({40, 55}), WorldTravel::VillageGate};
 		path(gatePath, 2, 1.5f);
 		dungeonGate = &decorationActors.AddChild("DungeonEntrance", WorldTravel::VillageGate);
 		dungeonGate->SetDraw(
 		    [](Actor& actor, Renderer& r)
 		    {
 			    if (Visible(actor.WorldPosition()))
-				    WorldTravel::DrawGate(r, Project(actor.WorldPosition()), false);
+				    WorldTravel::DrawGate(r, Project(actor.WorldPosition()), true);
 		    });
-		const Point returnPath[] = {{20, 45}, {45, 43}};
+		const Point returnPath[] = {VillagePoint({20, 45}), VillagePoint({45, 43})};
 		path(returnPath, 2, 1.6f);
-		PlacedActor(groundActors, {20, 49})
+		PlacedActor(groundActors, VillagePoint({20, 49}))
 		    .SetDraw(
 		        [](Actor& a, Renderer&)
 		        {
 			        GroundEllipse(a.Position(), 10, 8, {.53f, .49f, .39f, 1}, 0, Material::Stone);
 		        });
-		PlacedActor(groundActors, {132, 107})
+		PlacedActor(groundActors, VillagePoint({132, 107}))
 		    .SetDraw(
 		        [](Actor& a, Renderer&)
 		        {
 			        GroundEllipse(a.Position(), 8, 7, {.40f, .43f, .34f, 1}, 0, Material::Stone);
 		        });
-		PlacedActor(groundActors, {100, 91})
+		PlacedActor(groundActors, VillagePoint({100, 91}))
 		    .SetDraw(
 		        [](Actor& a, Renderer&)
 		        {
@@ -1552,7 +1626,7 @@ namespace
 		        });
 		for (int row = 0; row < 8; ++row)
 		{
-			Actor& field = PlacedActor(groundActors, {63 + row * .75f, 77});
+			Actor& field = PlacedActor(groundActors, VillagePoint({63 + row * .75f, 77}));
 			field.SetDraw(
 			    [](Actor& a, Renderer&)
 			    {
@@ -1569,7 +1643,7 @@ namespace
 					                          {.52f, .56f, .25f, 1});
 				        });
 		}
-		Actor& lake = groundActors.AddChild("Lake", {57, 28});
+		Actor& lake = groundActors.AddChild("Lake", VillagePoint({57, 28}));
 		lakeActor = &lake;
 		lake.SetDraw(
 		    [](Actor& a, Renderer&)
@@ -1643,7 +1717,7 @@ namespace
 		{
 			Point p = {3 + (float)((i * 29) % (MapWidth - 6)),
 			           3 + (float)((i * 43) % (MapHeight - 6))};
-			if (InLake(p, 1) || OnPath(p) || Distance(p, {20, 49}) < 10)
+			if (InLake(p, 1) || OnPath(p) || Distance(p, VillagePoint({20, 49})) < 10)
 				continue;
 			PlacedActor(groundActors, p)
 			    .SetDraw(
@@ -1769,7 +1843,8 @@ namespace
 		marker.SetUpdate(
 		    [](Actor& a, float)
 		    {
-			    a.SetVisible(true);
+			    a.SetVisible(stage != Complete ||
+			                 questJournal.NextDestination() != WorldTravel::Region::None);
 			    a.SetWorldPosition(Target());
 		    });
 		marker.SetDraw(
@@ -1821,8 +1896,11 @@ namespace
 		road(ridgeRoute, 3);
 		road(frontierRoute, 6);
 		road(northRoute, 4);
-		renderer->Ellipse(
-		    left + 57 * scale, top + 28 * scale, 12 * scale, 10 * scale, {.15f, .52f, .55f, 1});
+		renderer->Ellipse(left + VillagePoint({57, 28}).x * scale,
+		                  top + VillagePoint({57, 28}).y * scale,
+		                  12 * scale,
+		                  10 * scale,
+		                  {.15f, .52f, .55f, 1});
 
 		for (const auto& h : houses)
 			renderer->Rect(
@@ -1838,7 +1916,8 @@ namespace
 				    left + a.p.x * scale, top + a.p.y * scale, 2, 2, {.65f, .72f, .42f, 1});
 		}
 
-		renderer->Ellipse(left + Target().x * scale, top + Target().y * scale, 5, 5, Gold);
+		if (stage != Complete || questJournal.NextDestination() != WorldTravel::Region::None)
+			renderer->Ellipse(left + Target().x * scale, top + Target().y * scale, 5, 5, Gold);
 		Point gate = dungeonGate ? dungeonGate->WorldPosition() : WorldTravel::VillageGate;
 		renderer->Rect(left + gate.x * scale - 4, top + gate.y * scale - 4, 8, 8, Teal);
 		renderer->Ellipse(left + player.x * scale, top + player.y * scale, 4, 4, Cream);
@@ -1849,13 +1928,28 @@ namespace
 
 		if (expanded)
 		{
-			renderer->Text(left + 5 * scale, top + 6 * scale, L"속삭임의 숲", Cream);
-			renderer->Text(left + 49 * scale, top + 27 * scale, L"거울 호수", Cream);
-			renderer->Text(left + 15 * scale, top + 59 * scale, L"갈대여울 마을", Cream);
-			renderer->Text(left + 62 * scale, top + 89 * scale, L"동쪽 농가", Cream);
-			renderer->Text(left + 104 * scale, top + 114 * scale, L"옛 성터", Cream);
+			renderer->Text(left + VillagePoint({5, 6}).x * scale,
+			               top + VillagePoint({5, 6}).y * scale,
+			               L"속삭임의 숲",
+			               Cream);
+			renderer->Text(left + VillagePoint({49, 27}).x * scale,
+			               top + VillagePoint({49, 27}).y * scale,
+			               L"거울 호수",
+			               Cream);
+			renderer->Text(left + VillagePoint({15, 59}).x * scale,
+			               top + VillagePoint({15, 59}).y * scale,
+			               L"갈대여울 마을",
+			               Cream);
+			renderer->Text(left + VillagePoint({62, 89}).x * scale,
+			               top + VillagePoint({62, 89}).y * scale,
+			               L"동쪽 농가",
+			               Cream);
+			renderer->Text(left + VillagePoint({104, 114}).x * scale,
+			               top + VillagePoint({104, 114}).y * scale,
+			               L"옛 성터",
+			               Cream);
 			renderer->Text(
-			    left + gate.x * scale, top + gate.y * scale + 10, L"옛 수로 → 솔바람 분지", Teal);
+			    left + gate.x * scale, top + gate.y * scale + 10, L"옛 교역로 → 솔바람 분지", Teal);
 			renderer->Text(left + 5 * scale,
 			               top + MapHeight * scale - 28,
 			               L"깊은 숲 · 길을 잃으면 익숙한 길로 돌아옵니다",
@@ -1884,10 +1978,11 @@ namespace
 		renderer->Text(
 		    width - 210.f, 116, postprocess ? L"[P] 후처리 켜짐" : L"[P] 후처리 꺼짐", Teal);
 		renderer->Rect(22, height - 54.f, width - 44.f, 34, Panel);
-		renderer->Text(38,
-		               height - 49.f,
-		               L"WASD 이동   E 대화·조사·입구 이용   M 지도   P 후처리   Esc 일시정지",
-		               Cream);
+		renderer->Text(
+		    38,
+		    height - 49.f,
+		    L"WASD 이동 · Shift 달리기 · E 상호작용 · J 일지 · M 지도 · P 후처리 · Esc 일시정지",
+		    Cream);
 		int nearbyId = Nearby();
 
 		if (nearbyId >= 0 && dialogue.empty() && !choosing && !paused && !showMap)
@@ -1896,7 +1991,7 @@ namespace
 			                    : nearbyId == PersonCount     ? L"오래된 표석"
 			                    : nearbyId == PersonCount + 1 ? L"지도 조각"
 			                    : nearbyId == PersonCount + 2 ? L"호숫가의 제단"
-			                                                  : L"옛 수로로 들어가기";
+			                                                  : L"옛 교역로로 들어가기";
 			renderer->Rect(width * .5f - 180, height - 105.f, 360, 38, Panel);
 			renderer->Text(width * .5f - 160, height - 99.f, L"[E] " + name, Gold);
 		}
@@ -1951,6 +2046,7 @@ namespace
 			renderer->Text(
 			    width * .5f - 160, height * .5f, L"Esc 계속   R 처음부터   Q 종료", Cream);
 		}
+		questJournal.Draw(*renderer, width, height, WorldTravel::Region::Village);
 		renderer->Flush();
 	}
 
@@ -2012,14 +2108,13 @@ namespace
 
 	void Reset()
 	{
-		player = {18, 50};
+		player = VillagePoint({18, 50});
 		camera = player;
 		forestTrail.lastSafe = player;
 		travelNotice.clear();
 		travelNoticeTime = 0;
 		playerFacing = 1;
-		stage = Elder;
-		choice = 0;
+		questJournal.Reset();
 		elapsed = 0;
 		completedAt = 0;
 		paused = false;
@@ -2046,12 +2141,28 @@ namespace
 		    L"지도 밖의 첫 걸음",
 		    {L"작은 마을 갈대여울. 숲 너머 호수에서 낯선 소리가 들려온다. 오늘은 그 목소리의 흔적을 찾아 떠나 보자.",
 		     L"WASD로 화면 방향에 맞춰 이동합니다. 주민이나 단서 가까이에서 E를 누르세요. 먼저 광장의 촌장 엘린을 찾아보세요.",
-		     L"동쪽 길의 돌문은 옛 수로 입구입니다. 가까이에서 E로 들어가면 반대편 솔바람 분지까지 여행할 수 있습니다."});
+		     L"J로 여행 일지를 열어 목표와 단서·선택을 확인하세요. 동쪽 돌문은 E로 들어갑니다. 기록은 지역을 오가도 유지됩니다."});
 	}
 
 	void KeyDown(unsigned char input, int, int)
 	{
 		unsigned char key = (unsigned char)std::towlower(input);
+		if (questJournal.IsOpen())
+		{
+			questJournal.HandleKey(key);
+			std::fill(std::begin(keys), std::end(keys), false);
+			return;
+		}
+		if (key == 'j')
+		{
+			if (!paused && dialogue.empty() && !choosing && !showMap &&
+			    (!inFirstLevel || firstLevel.CanOpenJournal()))
+			{
+				questJournal.Open();
+				std::fill(std::begin(keys), std::end(keys), false);
+			}
+			return;
+		}
 		if (inFirstLevel)
 		{
 			if (key == 27)
@@ -2078,12 +2189,14 @@ namespace
 					FirstLevel::Exit exit = firstLevel.RequestedExit();
 					if (exit == FirstLevel::Exit::Village)
 					{
+						questJournal.RecordTravel(firstLevel.CurrentRegion(),
+						                          WorldTravel::Region::Village);
 						inFirstLevel = false;
 						playerActor.SetWorldPosition(WorldTravel::VillageLanding);
 						camera = player;
 						forestTrail.lastSafe = player;
 						walking = false;
-						travelNotice = L"옛 수로를 나와 갈대여울의 동쪽 길로 돌아왔습니다.";
+						travelNotice = L"옛 교역로를 나와 갈대여울의 동쪽 길로 돌아왔습니다.";
 						travelNoticeTime = 5;
 					}
 					else
@@ -2177,9 +2290,11 @@ namespace
 		// Focus loss clears held keys so alt-tab cannot leave the player walking.
 		if (GetForegroundWindow() != WindowFromDC(wglGetCurrentDC()))
 			std::fill(std::begin(keys), std::end(keys), false);
+		else
+			keys[VK_SHIFT] = (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0;
 		walking = false;
 
-		if (paused)
+		if (paused || questJournal.IsOpen())
 			return;
 		if (inFirstLevel)
 		{

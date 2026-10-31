@@ -18,7 +18,8 @@
 int main()
 {
 	using Region = FirstLevel::Region;
-	FirstLevel level;
+	QuestJournal journal;
+	FirstLevel level(journal);
 	assert(WorldTravel::Exits(Region::Passage).size() == 2);
 	assert(WorldTravel::Exits(Region::EchoHall).size() == 3);
 	for (auto region :
@@ -27,6 +28,11 @@ int main()
 		{
 			level.Begin(seed, true, region);
 			assert(level.Connected());
+			for (int cell = 0; cell < level.Columns * level.Rows; ++cell)
+				if (level.OnTravelRoad(level.Center(cell)))
+					assert(level.m_Tiles[cell] == FirstLevel::Tile::Ground);
+			for (const auto& link : WorldTravel::Exits(region))
+				assert(level.ClearLine(link.position, WorldTravel::SurveyStone));
 			assert(level.m_Exits.size() == WorldTravel::Exits(region).size());
 			for (size_t i = 0; i < level.m_Exits.size(); ++i)
 			{
@@ -39,14 +45,14 @@ int main()
 					reciprocal = reciprocal || back.destination == region;
 				assert(reciprocal);
 			}
-			int sectors[64] = {};
+			int sectors[16] = {};
 			for (const auto& enemy : level.m_Enemies)
 			{
 				assert(level.Walkable(enemy.home) && !level.SafeExit(enemy.home));
-				++sectors[static_cast<int>(enemy.home.y) / 20 * 8 +
+				++sectors[static_cast<int>(enemy.home.y) / 20 * 4 +
 				          static_cast<int>(enemy.home.x) / 24];
 			}
-			assert(level.m_Enemies.size() == 192);
+			assert(level.m_Enemies.size() == 48);
 			for (int count : sectors)
 				assert(count == 3);
 		}
@@ -62,14 +68,14 @@ int main()
 	{
 		level.Begin(42, false, region);
 		// No movement is applied: check all four boundary cases and preserved state.
-		for (Point edge : {Point{3, 7}, Point{7, 3}, Point{189, 81}, Point{97, 157}})
+		for (Point edge : {Point{3, 7}, Point{7, 3}, Point{93, 41}, Point{49, 77}})
 		{
 			level.m_ReturnTrail.lastSafe = WorldTravel::NearGate;
 			level.m_Player = edge;
 			assert(level.Update(.01f, input));
 			assert(level.Walkable(level.m_Player));
 			assert(level.m_Hp == 37 && level.m_Experience == 90 && level.m_Shards == 4);
-			assert(level.m_Message.find(WorldTravel::IsDungeon(region) ? L"통로" : L"숲") !=
+			assert(level.m_Message.find(WorldTravel::IsPassage(region) ? L"샛길" : L"숲") !=
 			       std::wstring::npos);
 		}
 	}
@@ -88,5 +94,5 @@ int main()
 	level.Key('r');
 	assert(level.CurrentRegion() == Region::Basin && level.m_Experience == 0);
 	puts(
-	    "PASS: 160 maps, variable reciprocal exits, 192 enemies/64 sectors, state and edge returns.");
+	    "PASS: 160 maps, variable reciprocal exits, 48 enemies/16 sectors, state and edge returns.");
 }

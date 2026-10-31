@@ -167,6 +167,7 @@
     <ClInclude Include="LevelModels.h" />
     <ClInclude Include="FirstLevel.h" />
     <ClInclude Include="WorldTravel.h" />
+    <ClInclude Include="QuestJournal.h" />
     <ClInclude Include="MonitorState.h" />
     <ClInclude Include="MonitorServer.h" />
     <ClInclude Include="CharacterSprites.h" />
@@ -180,6 +181,7 @@
     <ClCompile Include="AssetCache.cpp" />
     <ClCompile Include="LevelModels.cpp" />
     <ClCompile Include="FirstLevel.cpp" />
+    <ClCompile Include="QuestJournal.cpp" />
     <ClCompile Include="MonitorState.cpp" />
     <ClCompile Include="MonitorServer.cpp" />
     <ClCompile Include="CharacterSprites.cpp" />

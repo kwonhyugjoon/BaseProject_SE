@@ -1,4 +1,5 @@
 #include "../SimpleGame/FirstLevel.h"
+#include "../SimpleGame/QuestJournal.h"
 #include "../SimpleGame/MonitorState.h"
 #include <cassert>
 #include <cmath>
@@ -7,7 +8,8 @@
 
 int main()
 {
-	FirstLevel level;
+	QuestJournal journal;
+	FirstLevel level(journal);
 	MonitorSnapshot snapshot;
 	level.CaptureMonitorState(snapshot);
 	assert(!snapshot.huntingLoaded && snapshot.mobs[0].total == 0);
@@ -15,17 +17,17 @@ int main()
 	{
 		level.Begin(seed, true);
 		Actor* enemies = level.Scene().World().Find("Enemies");
-		assert(enemies && enemies->Children().size() == 192);
-		int sectors[64] = {};
+		assert(enemies && enemies->Children().size() == 48);
+		int sectors[16] = {};
 		std::set<std::pair<int, int>> positions;
 		std::set<std::string> types;
 		for (const auto& actor : enemies->Children())
 		{
 			Point p = actor->WorldPosition();
-			assert(p.x > 0 && p.x < 192 && p.y > 0 && p.y < 160);
-			assert(std::hypot(p.x - 7, p.y - 7) > 12);
+			assert(p.x > 0 && p.x < 96 && p.y > 0 && p.y < 80);
+			assert(std::hypot(p.x - WorldTravel::NearGate.x, p.y - WorldTravel::NearGate.y) > 12);
 			assert(positions.insert({static_cast<int>(p.x), static_cast<int>(p.y)}).second);
-			++sectors[static_cast<int>(p.y) / 20 * 8 + static_cast<int>(p.x) / 24];
+			++sectors[static_cast<int>(p.y) / 20 * 4 + static_cast<int>(p.x) / 24];
 			types.insert(actor->Name().substr(0, actor->Name().find('/')));
 		}
 		for (int count : sectors)
@@ -39,8 +41,8 @@ int main()
 			monitoredTotal += count.total;
 			monitoredAlive += count.alive;
 		}
-		assert(snapshot.huntingLoaded && monitoredTotal == 192 && monitoredAlive == 192);
-		printf("Seed %u: 192 unique spawns, 64 populated sectors, four enemy types.\n", seed);
+		assert(snapshot.huntingLoaded && monitoredTotal == 48 && monitoredAlive == 48);
+		printf("Seed %u: 48 unique spawns, 16 populated sectors, four enemy types.\n", seed);
 	}
 	Actor* enemies = level.Scene().World().Find("Enemies");
 	std::set<std::string> selected;
@@ -50,7 +52,7 @@ int main()
 		std::string type = actor->Name().substr(0, actor->Name().find('/'));
 		if (selected.insert(type).second)
 		{
-			actor->SetWorldPosition({7.8f, 7.8f});
+			actor->SetWorldPosition({WorldTravel::NearGate.x + .8f, WorldTravel::NearGate.y + .8f});
 			targets.push_back(actor.get());
 		}
 	}
