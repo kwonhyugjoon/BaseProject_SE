@@ -22,8 +22,13 @@ int main()
 	FirstLevel level(journal);
 	assert(WorldTravel::Exits(Region::Passage).size() == 2);
 	assert(WorldTravel::Exits(Region::EchoHall).size() == 3);
-	for (auto region :
-	     {Region::Passage, Region::Basin, Region::EchoHall, Region::StoneRidge, Region::MistShore})
+	for (auto region : {Region::Passage,
+	                    Region::Basin,
+	                    Region::EchoHall,
+	                    Region::StoneRidge,
+	                    Region::MistShore,
+	                    Region::DwarfMine,
+	                    Region::DwarfCity})
 		for (unsigned seed = 1; seed <= 32; ++seed)
 		{
 			level.Begin(seed, true, region);
@@ -39,7 +44,10 @@ int main()
 				const auto& link = WorldTravel::Exits(region)[i];
 				assert(level.Walkable(link.position));
 				level.m_Player = link.position;
-				assert(level.Key('e') && level.RequestedExit() == link.destination);
+				bool open = journal.CanTravel(region, link.destination);
+				assert(level.Key('e') == open);
+				if (open)
+					assert(level.RequestedExit() == link.destination);
 				bool reciprocal = false;
 				for (const auto& back : WorldTravel::Exits(link.destination))
 					reciprocal = reciprocal || back.destination == region;
@@ -52,9 +60,9 @@ int main()
 				++sectors[static_cast<int>(enemy.home.y) / 20 * 4 +
 				          static_cast<int>(enemy.home.x) / 24];
 			}
-			assert(level.m_Enemies.size() == 48);
+			assert(level.m_Enemies.size() == (region == Region::DwarfCity ? 0 : 48));
 			for (int count : sectors)
-				assert(count == 3);
+				assert(count == (region == Region::DwarfCity ? 0 : 3));
 		}
 	level.m_Experience = 90;
 	level.m_Level = 3;
@@ -94,5 +102,5 @@ int main()
 	level.Key('r');
 	assert(level.CurrentRegion() == Region::Basin && level.m_Experience == 0);
 	puts(
-	    "PASS: 160 maps, variable reciprocal exits, 48 enemies/16 sectors, state and edge returns.");
+	    "PASS: 224 maps, variable reciprocal exits, 48 enemies/16 sectors or peaceful city, state and edge returns.");
 }

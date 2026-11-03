@@ -127,11 +127,11 @@ int main()
 		EnterRegion(Region::EchoHall, Region::MistShore);
 		EnterRegion(Region::StoneRidge, Region::EchoHall);
 		SurveyCurrentRegion();
-		assert(questJournal.NextDestination() == Region::None);
+		assert(questJournal.NextDestination() == Region::StoneRidge);
 		auto clues = questJournal.Lines(1, Region::StoneRidge);
 		firstLevel.Begin(42, true, Region::StoneRidge);
 		assert(questJournal.Lines(1, Region::StoneRidge) == clues && choice == selection);
-		assert(questJournal.RouteToNext(Region::StoneRidge).empty());
+		assert(questJournal.RouteToNext(Region::StoneRidge).size() == 1);
 
 		// Use the real exit handlers to return home without changing history.
 		traveler->SetWorldPosition(WorldTravel::NearGate);
@@ -145,6 +145,28 @@ int main()
 		assert(!inFirstLevel && stage == Complete && choice == selection);
 		assert(questJournal.Lines(1, Region::Village) == clues);
 	}
+
+	// Opening and finishing a regional dialogue must clear held movement/attack input.
+	Reset();
+	dialogue.clear();
+	for (Stage expected : {Elder, Scout, Rune, Fragment, Fisher})
+		assert(questJournal.CompleteStep(expected));
+	assert(questJournal.ChooseLake(1) && questJournal.CompleteStep(Return));
+	questJournal.Visit(Region::StoneRidge);
+	assert(questJournal.Investigate(Region::StoneRidge));
+	EnterRegion(Region::StoneRidge);
+	Actor* contact = firstLevel.Scene().World().Find("Dwarf/Torvik");
+	firstLevel.Scene().World().Find("Player")->SetWorldPosition(contact->WorldPosition());
+	keys['w'] = keys[' '] = true;
+	KeyDown('e', 0, 0);
+	assert(firstLevel.IsStoryOpen() && !keys['w'] && !keys[' ']);
+	KeyDown('j', 0, 0);
+	assert(!questJournal.IsOpen());
+	for (int i = 0; i < 3; ++i)
+		KeyDown(' ', 0, 0);
+	assert(!firstLevel.IsStoryOpen() && !keys[' '] && !keys['w']);
+	assert(questJournal.DwarfProgress() == QuestJournal::DwarfStage::Record);
+	inFirstLevel = false;
 	Reset();
 	assert(stage == Elder && choice == 0 && !questJournal.IsOpen());
 	assert(!questJournal.Investigated(WorldTravel::Region::Basin));

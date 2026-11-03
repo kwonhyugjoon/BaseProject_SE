@@ -508,7 +508,8 @@ namespace
 		                         std::chrono::system_clock::now().time_since_epoch())
 		                         .count();
 		snapshot.scene = inFirstLevel ? WorldTravel::Key(firstLevel.CurrentRegion()) : "tutorial";
-		snapshot.paused = paused;
+		snapshot.paused =
+		    paused || questJournal.IsOpen() || (inFirstLevel && firstLevel.IsStoryOpen());
 		MonitorVillage village;
 		village.id = "reedmere";
 		village.name = "갈대여울과 주변";
@@ -2179,8 +2180,10 @@ namespace
 			{
 				if (key == 'p')
 					postprocess = !postprocess;
+				bool storyWasOpen = firstLevel.IsStoryOpen();
 				bool leave = firstLevel.Key(key);
-				if (key == 'i' || key == 'm' || key == 'r' || leave)
+				if (key == 'i' || key == 'm' || key == 'r' || storyWasOpen ||
+				    firstLevel.IsStoryOpen() || leave)
 					std::fill(std::begin(keys), std::end(keys), false);
 				else
 					keys[key] = true;

@@ -39,15 +39,19 @@ const FirstLevel::EnemyStats& FirstLevel::Stats(EnemyKind kind)
 	    {24, 5, 15, 3, 1.65f, 1.5f, .5f, 1.2f, {.3f, .6f, .3f, 1}},
 	    {36, 7, 22, 5, 2.2f, 1.7f, .65f, 1.4f, {.62f, .25f, .18f, 1}},
 	    {28, 6, 20, 5, 1.9f, 8.f, .9f, 2.f, {.35f, .48f, .22f, 1}},
-	    {32, 6, 26, 7, 1.5f, 7.f, 1.15f, 2.4f, {.56f, .3f, .70f, 1}}};
+	    {32, 6, 26, 7, 1.5f, 7.f, 1.15f, 2.4f, {.56f, .3f, .70f, 1}},
+	    {28, 7, 20, 3, 2.6f, 4.f, .7f, 2.1f, {.44f, .47f, .42f, 1}},
+	    {38, 6, 24, 4, 1.35f, 1.5f, .85f, 1.8f, {.57f, .46f, .25f, 1}},
+	    {56, 10, 36, 6, 1.1f, 3.6f, 1.3f, 2.8f, {.46f, .52f, .50f, 1}}};
 	return stats[static_cast<int>(kind)];
 }
 
 void FirstLevel::CaptureMonitorState(MonitorSnapshot& snapshot) const
 {
 	snapshot.huntingLoaded = m_Initialized;
-	const char* kinds[] = {"slime", "bandit", "archer", "priest"};
-	const char* names[] = {"슬라임", "도적", "궁수", "타락한 사제"};
+	const char* kinds[] = {"slime", "bandit", "archer", "priest", "wolf", "beetle", "guardian"};
+	const char* names[] = {
+	    "슬라임", "도적", "궁수", "타락한 사제", "숲 늑대", "광맥 갑충", "고장 난 석재 수호체"};
 	for (size_t i = 0; i < snapshot.mobs.size(); ++i)
 	{
 		snapshot.mobs[i] = {};
@@ -61,6 +65,51 @@ void FirstLevel::CaptureMonitorState(MonitorSnapshot& snapshot) const
 		if (enemy.hp > 0)
 			++count.alive;
 	}
+
+	const Region areas[] = {Region::StoneRidge, Region::DwarfCity, Region::DwarfCity};
+	const Point positions[] = {{55, 41}, WorldTravel::SurveyStone, {57, 43}};
+	const char* ids[] = {"Dwarf/Torvik", "Dwarf/Bryn", "Dwarf/Dorna"};
+	const char* labels[] = {"파수꾼 토르빅", "기록관 브린", "대장장이 도르나"};
+	for (int i = 0; i < 3; ++i)
+	{
+		bool active =
+		    m_Initialized && m_Region == areas[i] && snapshot.scene == WorldTravel::Key(areas[i]);
+		Actor* node = active ? m_StaticActors.Find(ids[i]) : nullptr;
+		MonitorNpc npc;
+		npc.id = ids[i];
+		npc.name = labels[i];
+		npc.villageId = "deepstone";
+		npc.routine = i == 2 ? "대장간 안내" : "기록과 길 안내";
+		npc.state = !active ? "inactive_area"
+		            : IsStoryOpen() &&
+		                    Distance(m_Player, node ? node->WorldPosition() : positions[i]) < 2.5f
+		                ? "talking"
+		            : snapshot.paused ? "paused"
+		                              : "standing";
+		Point position = node ? node->WorldPosition() : positions[i];
+		npc.x = position.x;
+		npc.y = position.y;
+		npc.visible = node && node->IsVisible();
+		npc.enabled = node && node->IsEnabled();
+		if (node && !node->IsEnabled())
+			npc.state = "disabled";
+		snapshot.npcs.push_back(npc);
+	}
+	MonitorVillage city;
+	city.id = "deepstone";
+	city.name = "깊은돌 도시와 전초지";
+	city.population = 3;
+	city.mood = m_Journal.DwarfChoice() == 1   ? "교역 재개를 준비함"
+	            : m_Journal.DwarfChoice() == 2 ? "안전 점검에 집중함"
+	                                           : "신중한 환대";
+	city.disposition = m_Journal.DwarfChoice() == 1   ? "감시 아래 교류"
+	                   : m_Journal.DwarfChoice() == 2 ? "봉인 유지와 기록 보존"
+	                                                  : "기록을 통해 판단";
+	city.rumorsImplemented = true;
+	city.rumors = {m_Journal.DwarfChoice() == 1   ? "분지 지름길의 감시 등불이 다시 켜졌다."
+	               : m_Journal.DwarfChoice() == 2 ? "지름길 봉인은 유지되고 산길 교역은 계속된다."
+	                                              : "폐광 수호체가 광부의 귀환 신호를 기다린다."};
+	snapshot.villages.push_back(city);
 }
 
 int FirstLevel::AttackPower() const
@@ -210,7 +259,7 @@ void FirstLevel::Generate()
 			if (!x || !y || x == Columns - 1 || y == Rows - 1)
 				m_Tiles[y * Columns + x] = Tile::Tree;
 	// Reject every obstacle that would isolate any traversable cell.
-	for (int i = 0; i < 2600 * Columns * Rows / (96 * 80); ++i)
+	for (int i = 0; m_Region != Region::DwarfCity && i < 2600 * Columns * Rows / (96 * 80); ++i)
 	{
 		int x = 1 + Random() % (Columns - 2), y = 1 + Random() % (Rows - 2);
 		int cell = y * Columns + x;
@@ -222,13 +271,19 @@ void FirstLevel::Generate()
 	}
 	for (auto& tile : m_Tiles)
 	{
-		if (m_Region == Region::StoneRidge && tile == Tile::Water)
+		if ((m_Region == Region::StoneRidge && tile == Tile::Water) ||
+		    (m_Region == Region::DwarfMine && (tile == Tile::Water || tile == Tile::Tree)))
 			tile = Tile::Rock;
 		else if (m_Region == Region::MistShore && tile == Tile::Rock)
 			tile = Tile::Water;
 	}
 	m_Enemies.clear();
 	m_EnemyActors.ClearChildren();
+	if (m_Region == Region::DwarfCity)
+	{
+		m_FlowTarget = -1;
+		return;
+	}
 	std::vector<int> spawnCells;
 	for (int i = 0; i < Columns * Rows; ++i)
 		if (m_Tiles[i] == Tile::Ground && !SafeExit(Center(i), 12))
@@ -245,11 +300,25 @@ void FirstLevel::Generate()
 			continue;
 		++counts[sector];
 		Point p = Center(cell);
-		EnemyKind kind = static_cast<EnemyKind>(m_Enemies.size() % 4);
-		// The first encounters near camp remain approachable.
-		if (Distance(p, Camp) < 20)
-			kind = EnemyKind::Slime;
-		const char* names[] = {"Slime/", "Bandit/", "Archer/", "Priest/"};
+		static const EnemyKind road[] = {EnemyKind::Bandit, EnemyKind::Archer, EnemyKind::Wolf};
+		static const EnemyKind ridge[] = {
+		    EnemyKind::Wolf, EnemyKind::Beetle, EnemyKind::Bandit, EnemyKind::Archer};
+		static const EnemyKind mine[] = {EnemyKind::Beetle, EnemyKind::Guardian};
+		EnemyKind kind;
+		if (WorldTravel::IsPassage(m_Region))
+			kind = road[m_Enemies.size() % 3];
+		else if (m_Region == Region::StoneRidge)
+			kind = ridge[m_Enemies.size() % 4];
+		else if (m_Region == Region::DwarfMine)
+			kind = mine[m_Enemies.size() % 2];
+		else
+		{
+			kind = static_cast<EnemyKind>(m_Enemies.size() % 4);
+			if (Distance(p, Camp) < 20)
+				kind = EnemyKind::Slime;
+		}
+		const char* names[] = {
+		    "Slime/", "Bandit/", "Archer/", "Priest/", "Wolf/", "Beetle/", "Guardian/"};
 		Actor& actor = m_EnemyActors.AddChild(
 		    names[static_cast<int>(kind)] + std::to_string(m_Enemies.size()), p);
 		m_Enemies.emplace_back(actor, p, kind);
@@ -271,6 +340,7 @@ void FirstLevel::Begin(uint32_t seed, bool resetProgress, Region region, Region 
 		m_Hp = 100;
 		m_Coins = 0;
 		m_Shards = 0;
+		m_Materials.fill(0);
 		m_Kills = 0;
 	}
 	m_Models.Load();
@@ -292,6 +362,10 @@ void FirstLevel::Begin(uint32_t seed, bool resetProgress, Region region, Region 
 	m_Map = false;
 	m_Stats = false;
 	m_Walking = false;
+	m_Dialogue.clear();
+	m_DialoguePage = 0;
+	m_ChoosingDwarf = false;
+	m_StoryAction = StoryAction::None;
 	Generate();
 	BuildScene();
 	m_Journal.Visit(region);
@@ -301,6 +375,10 @@ void FirstLevel::Begin(uint32_t seed, bool resetProgress, Region region, Region 
 
 bool FirstLevel::SafeExit(Point position, float margin) const
 {
+	if (m_Region == Region::DwarfCity)
+		return true;
+	if (m_Region == Region::StoneRidge && Distance(position, {55, 41}) <= margin)
+		return true;
 	for (const auto& exit : WorldTravel::Exits(m_Region))
 		if (Distance(position, exit.position) <= margin)
 			return true;
@@ -424,12 +502,14 @@ void FirstLevel::Attack()
 		if (!enemy.actor.IsEnabled() || enemy.hp <= 0 || distance > 2.6f ||
 		    facing < -.15f * distance || !ClearLine(m_Player, enemy.position))
 			continue;
-		enemy.hp = std::max(0, enemy.hp - AttackPower());
+		int armor = enemy.kind == EnemyKind::Beetle && enemy.windup <= 0 ? 3 : 0;
+		enemy.hp = std::max(0, enemy.hp - std::max(1, AttackPower() - armor));
 		enemy.flash = .15f;
 		if (!enemy.hp)
 		{
 			enemy.respawn = 12;
 			enemy.windup = 0;
+			enemy.charge = 0;
 			enemy.actor.SetVisible(false);
 			if (m_Drops.size() >= 256)
 			{
@@ -439,8 +519,13 @@ void FirstLevel::Attack()
 			}
 			Actor& drop = m_DropActors.AddChild("Loot/" + std::to_string(m_Kills));
 			drop.SetWorldPosition(enemy.position);
-			ModelActor(drop, LevelModel::Loot);
-			m_Drops.push_back({&drop, Stats(enemy.kind).coins, 1});
+			int material = enemy.kind == EnemyKind::Beetle     ? 1
+			               : enemy.kind == EnemyKind::Guardian ? 2
+			                                                   : 0;
+			LevelModel lootModels[] = {
+			    LevelModel::TrailLoot, LevelModel::OreLoot, LevelModel::PartsLoot};
+			ModelActor(drop, lootModels[material]);
+			m_Drops.push_back({&drop, Stats(enemy.kind).coins, 1, material});
 			++m_Kills;
 			GainExperience(Stats(enemy.kind).experience);
 		}
@@ -457,6 +542,8 @@ void FirstLevel::Pickup()
 		{
 			m_Coins += it->coins;
 			m_Shards += it->shards;
+			if (it->material >= 0)
+				++m_Materials[it->material];
 			++picked;
 			Actor* actor = it->actor;
 			it = m_Drops.erase(it);
@@ -480,6 +567,24 @@ bool FirstLevel::Key(unsigned char key)
 			Begin(m_Seed + 1, true, m_Region);
 		return false;
 	}
+	if (m_ChoosingDwarf)
+	{
+		if ((key == '1' || key == '2') && m_Journal.ChooseDwarf(key - '0'))
+		{
+			m_ChoosingDwarf = false;
+			GainExperience(75);
+			Message(m_Journal.DwarfChoice() == 1
+			            ? L"교역 재개 · 분지와 폐광 사이 지름길이 열렸습니다."
+			            : L"봉인 유지 · 기존 돌등성이 산길로 계속 왕래할 수 있습니다.");
+		}
+		return false;
+	}
+	if (!m_Dialogue.empty())
+	{
+		if ((key == 'e' || key == ' ') && ++m_DialoguePage == m_Dialogue.size())
+			FinishStory();
+		return false;
+	}
 	if (key == 'i')
 		m_Stats = !m_Stats;
 	if (key == 'm')
@@ -492,8 +597,24 @@ bool FirstLevel::Key(unsigned char key)
 		int exit = NearbyExit();
 		if (exit >= 0)
 		{
-			m_RequestedExit = WorldTravel::Exits(m_Region)[exit].destination;
+			Region destination = WorldTravel::Exits(m_Region)[exit].destination;
+			if (!m_Journal.CanTravel(m_Region, destination))
+			{
+				Message(
+				    destination == Region::DwarfCity
+				        ? L"도시의 파수꾼: 폐광 작업 기록을 확인한 여행자만 맞이합니다. 기록을 먼저 조사하세요."
+				        : L"봉인된 분지 지름길입니다. 도시 기록관에게 교역 재개 여부를 결정하세요.");
+				return false;
+			}
+			m_RequestedExit = destination;
 			return true;
+		}
+		if ((m_StoryContact && Distance(m_Player, m_StoryContact->WorldPosition()) < 2.5f &&
+		     ClearLine(m_Player, m_StoryContact->WorldPosition())) ||
+		    (m_Smith && Distance(m_Player, m_Smith->WorldPosition()) < 2.5f))
+		{
+			InteractStory();
+			return false;
 		}
 		if (m_SurveyStone && Distance(m_Player, m_SurveyStone->WorldPosition()) < 2.5f &&
 		    ClearLine(m_Player, m_SurveyStone->WorldPosition()))
@@ -565,6 +686,7 @@ void FirstLevel::UpdateEnemy(Enemy& enemy, float dt)
 			enemy.hp = Stats(enemy.kind).hp;
 			enemy.supportCooldown = 3;
 			enemy.glow = 0;
+			enemy.charge = 0;
 			enemy.actor.SetVisible(true);
 			enemy.cooldown = 1;
 		}
@@ -573,6 +695,21 @@ void FirstLevel::UpdateEnemy(Enemy& enemy, float dt)
 	enemy.cooldown = std::max(0.f, enemy.cooldown - dt);
 	float distance = Distance(enemy.position, m_Player);
 	bool safe = SafeExit(m_Player);
+	if (enemy.charge > 0)
+	{
+		enemy.charge = std::max(0.f, enemy.charge - dt);
+		Point previous = enemy.position;
+		Move(enemy.position, {enemy.chargeDirection.x * 8 * dt, enemy.chargeDirection.y * 8 * dt});
+		enemy.moving = Distance(previous, enemy.position) > .00001f;
+		if (!safe && Distance(enemy.position, m_Player) < 1.3f && m_HitCooldown <= 0 &&
+		    ClearLine(enemy.position, m_Player))
+		{
+			m_Hp = std::max(0, m_Hp - std::max(1, stats.damage - Defense()));
+			m_HitCooldown = .6f;
+			enemy.charge = 0;
+		}
+		return;
+	}
 	if (enemy.windup > 0)
 	{
 		enemy.windup -= dt;
@@ -580,8 +717,21 @@ void FirstLevel::UpdateEnemy(Enemy& enemy, float dt)
 		{
 			enemy.cooldown = stats.cooldown;
 			bool ranged = enemy.kind == EnemyKind::Archer || enemy.kind == EnemyKind::Priest;
-			bool hit = ranged ? Distance(m_Player, enemy.attackTarget) < 1.1f
-			                  : distance < stats.range + .1f;
+			if (enemy.kind == EnemyKind::Wolf)
+			{
+				float length = Distance(enemy.position, enemy.attackTarget);
+				if (!safe && length > .01f)
+				{
+					enemy.chargeDirection = {(enemy.attackTarget.x - enemy.position.x) / length,
+					                         (enemy.attackTarget.y - enemy.position.y) / length};
+					enemy.charge = std::min(.45f, length / 8);
+				}
+				return;
+			}
+			bool hit = enemy.kind == EnemyKind::Guardian
+			               ? Distance(m_Player, enemy.attackTarget) < 2.3f
+			           : ranged ? Distance(m_Player, enemy.attackTarget) < 1.1f
+			                    : distance < stats.range + .1f;
 			if (!safe && hit && distance < stats.range + 1 && m_HitCooldown <= 0 &&
 			    ClearLine(enemy.position, m_Player))
 			{
@@ -681,7 +831,7 @@ void FirstLevel::UpdateEnemy(Enemy& enemy, float dt)
 bool FirstLevel::Update(float seconds, const bool* keys)
 {
 	m_Walking = false;
-	if (m_Hp <= 0 || m_Map || m_Stats || m_Journal.IsOpen())
+	if (m_Hp <= 0 || m_Map || m_Stats || IsStoryOpen() || m_Journal.IsOpen())
 		return false;
 	float remaining = std::min(seconds, .25f);
 	m_MessageTime = std::max(0.f, m_MessageTime - remaining);
@@ -698,6 +848,142 @@ bool FirstLevel::Update(float seconds, const bool* keys)
 		}
 	}
 	return false;
+}
+
+LevelModel FirstLevel::EnemyModel(EnemyKind kind) const
+{
+	switch (kind)
+	{
+	case EnemyKind::Wolf:
+		return LevelModel::Wolf;
+	case EnemyKind::Beetle:
+		return LevelModel::Beetle;
+	case EnemyKind::Guardian:
+		return LevelModel::Guardian;
+	default:
+		return LevelModel::Slime;
+	}
+}
+
+void FirstLevel::BuildDwarfScene()
+{
+	if (m_Region == Region::StoneRidge)
+	{
+		m_StoryContact = &m_StaticActors.AddChild("Dwarf/Torvik", {55, 41});
+		ModelActor(*m_StoryContact, LevelModel::Dwarf);
+	}
+	else if (m_Region == Region::DwarfMine)
+	{
+		m_StoryContact = &m_StaticActors.AddChild("MineRecord", WorldTravel::SurveyStone);
+		ModelActor(*m_StoryContact, LevelModel::Archive);
+	}
+	else if (m_Region == Region::DwarfCity)
+	{
+		m_StoryContact = &m_StaticActors.AddChild("Dwarf/Bryn", WorldTravel::SurveyStone);
+		m_Smith = &m_StaticActors.AddChild("Dwarf/Dorna", {57, 43});
+		ModelActor(*m_StoryContact, LevelModel::Dwarf);
+		ModelActor(*m_Smith, LevelModel::Dwarf);
+		for (Point p : {Point{37, 31}, Point{63, 47}})
+			ModelActor(
+			    m_StaticActors.AddChild("CityArch/" + std::to_string(static_cast<int>(p.x)), p),
+			    LevelModel::DwarfHall);
+		ModelActor(m_StaticActors.AddChild("CityForge", {57, 47}), LevelModel::Camp);
+	}
+}
+
+Point FirstLevel::StoryTarget() const
+{
+	if (m_StoryContact && (m_Region != Region::StoneRidge || m_Journal.Investigated(m_Region)))
+		return m_StoryContact->WorldPosition();
+	return WorldTravel::SurveyStone;
+}
+
+void FirstLevel::InteractStory()
+{
+	using DwarfStage = QuestJournal::DwarfStage;
+	m_DialoguePage = 0;
+	m_StoryAction = StoryAction::None;
+	if (m_Smith && Distance(m_Player, m_Smith->WorldPosition()) < 2.5f)
+	{
+		m_Dialogue = {
+		    L"대장장이 도르나: 갑충의 껍질에는 광맥이 붙어 있고 수호체에는 길을 안내하던 부품이 남아 있어. 둘을 같은 짐승이라 여기지 마.",
+		    m_Journal.DwarfChoice() == 1
+		        ? L"교역을 다시 시작하면 수리할 부품을 받을 수 있겠지. 대신 경비 교대도 늘려야 해. 우리가 함께 책임질 일이야."
+		    : m_Journal.DwarfChoice() == 2
+		        ? L"봉인을 남겨 두었으니 안전 점검부터 하겠어. 돌아갈 산길은 열려 있어. 단절을 영원한 적대로 여기진 말아 줘."
+		        : L"갑충은 공격을 준비할 때 껍질의 틈이 벌어져. 수호체의 큰 타격은 바닥에 새겨지는 예고를 보고 피할 수 있어."};
+	}
+	else if (m_Region == Region::StoneRidge)
+	{
+		if (m_Journal.TutorialStage() != QuestJournal::Stage::Complete ||
+		    !m_Journal.Investigated(Region::StoneRidge))
+			m_Dialogue = {
+			    L"파수꾼 토르빅: 갈대여울의 부탁을 마치고 옆 이정표를 기록해 줘. 표식을 읽는 여행자에게 우리 도시의 이야기를 맡기고 싶어."};
+		else if (m_Journal.DwarfProgress() == DwarfStage::Meeting)
+		{
+			m_Dialogue = {
+			    L"파수꾼 토르빅: 지도 기록자라면 부탁이 있네. 깊은돌 폐광길에서 옛 작업 기록을 찾아 도시의 기록관 브린에게 전해 주게.",
+			    L"수호체는 원래 귀환하는 광부의 등불을 따라 길을 열던 장치였어. 고장 나 지금은 낯선 발걸음에 반응하지. 무조건 파괴할 필요는 없네.",
+			    L"중앙 기록대까지 길은 남아 있네. 기록에는 닫힌 지름길의 이유가 있을 거야. 마을의 종에 답했든 거리를 두었든 우리는 자네의 기록을 듣겠네."};
+			m_StoryAction = StoryAction::Start;
+		}
+		else
+			m_Dialogue = {
+			    m_Journal.DwarfChoice() == 1
+			        ? L"토르빅: 분지와 폐광 지름길에 감시 등불을 켰네. 여행자가 오가면 소문보다 서로의 모습을 더 잘 알게 되겠지."
+			    : m_Journal.DwarfChoice() == 2
+			        ? L"토르빅: 봉인은 유지하지만 이 산길로는 계속 오갈 수 있네. 다음 여행에도 도시가 한 선택을 기억해 주게."
+			        : L"토르빅: 동쪽 출입구가 깊은돌 폐광길로 이어져. 중앙 작업 기록을 읽은 뒤 도시 앞마당의 브린을 찾아가게."};
+	}
+	else if (m_Region == Region::DwarfMine)
+	{
+		if (m_Journal.DwarfProgress() == DwarfStage::Record)
+		{
+			m_Dialogue = {
+			    L"폐광 작업 기록: 이 길은 물자와 사람을 위한 길이었다. 경계를 긁어 얻은 광석을 실어 나른 뒤, 낯선 울림이 귀환 신호를 흉내 내기 시작했다.",
+			    L"도시는 채굴과 분지 지름길을 멈췄다. 수호체에는 마지막 귀환 명령이 남았다. 돌아가는 이에게 표식을. 갈대여울에서 본 문구와 닮았다.",
+			    L"기록의 인장을 옮겨 그렸다. 도시 문에서 이 기록을 제시할 수 있다. 원래의 기록과 봉인 장치는 그대로 두었다."};
+			m_StoryAction = StoryAction::Record;
+		}
+		else
+			m_Dialogue = {
+			    m_Journal.DwarfProgress() == DwarfStage::Meeting
+			        ? L"작업 기록대: 드워프 인장과 귀환 표식이 있다. 먼저 돌등성이의 토르빅에게 이 표식이 무엇인지 물어보자."
+			        : L"작업 기록은 이미 일지에 옮겼다. 도시 문은 기록을 확인한 여행자에게 열려 있다. J로 다음 목적지를 확인하자."};
+	}
+	else
+	{
+		if (m_Journal.DwarfProgress() == DwarfStage::Report)
+		{
+			m_Dialogue = {
+			    L"기록관 브린: 우리는 낯선 이를 모두 적으로 여겨 길을 닫은 게 아니야. 길을 지킬 책임보다 채굴을 앞세운 우리에게도 잘못이 있었지.",
+			    L"감시 아래 옛 교역길을 열면 분지와 바로 오가며 부품과 소식을 나눌 수 있어. 대신 울림을 지켜볼 사람이 더 필요해.",
+			    L"봉인을 유지하면 조사할 시간을 얻지만 교역은 먼 산길을 돌아야 하지. 어느 쪽이든 도시는 네 기록을 남길 거야. 우리의 다음 걸음을 함께 정해 줘."};
+			m_StoryAction = StoryAction::Council;
+		}
+		else if (m_Journal.DwarfProgress() == DwarfStage::Choice)
+			m_ChoosingDwarf = true;
+		else
+			m_Dialogue = {
+			    m_Journal.DwarfChoice() == 1
+			        ? L"브린: 도시는 여행자를 교역 협력자로 맞이한다. 분지 지름길을 열고 감시와 수리를 함께 맡기로 했다. 길을 여는 것은 책임을 나누는 일이겠지."
+			    : m_Journal.DwarfChoice() == 2
+			        ? L"브린: 도시는 기록 보존과 안전 점검에 집중한다. 지름길은 닫혀 있어도 기존 산길과 우리의 대화는 열려 있다."
+			        : L"브린: 먼저 폐광의 작업 기록을 읽고 와 줘. 이 도시의 판단에는 우리가 남긴 기록이 필요해."};
+	}
+}
+
+void FirstLevel::FinishStory()
+{
+	m_Dialogue.clear();
+	m_DialoguePage = 0;
+	if (m_StoryAction == StoryAction::Start)
+		m_Journal.StartDwarfStory();
+	else if (m_StoryAction == StoryAction::Record)
+		m_Journal.ReadDwarfRecord();
+	else if (m_StoryAction == StoryAction::Council && m_Journal.HearDwarfCouncil())
+		m_ChoosingDwarf = true;
+	m_StoryAction = StoryAction::None;
 }
 
 Point FirstLevel::Project(Point p, int width, int height) const
@@ -731,7 +1017,8 @@ void FirstLevel::ModelActor(Actor& actor, LevelModel model, int enemy)
 			                    smooth((110 - dy) / 30);
 			    tint.a = 1 - .9f * overlap;
 		    }
-		    if (enemy >= 0 && m_Enemies[enemy].kind != EnemyKind::Slime)
+		    if (enemy >= 0 && m_Enemies[enemy].kind >= EnemyKind::Bandit &&
+		        m_Enemies[enemy].kind <= EnemyKind::Priest)
 		    {
 			    const Enemy& foe = m_Enemies[enemy];
 			    Color coat = Stats(foe.kind).color;
@@ -752,7 +1039,12 @@ void FirstLevel::ModelActor(Actor& actor, LevelModel model, int enemy)
 				              {.85f, .85f, .75f, 1});
 		    }
 		    else
+		    {
+			    if (enemy >= 0 && m_Enemies[enemy].moving)
+				    s.y -=
+				        std::abs(std::sin(m_Time * (model == LevelModel::Guardian ? 4 : 12))) * 2;
 			    r.Model(s, m_Models.Get(model), tint);
+		    }
 		    if (enemy >= 0 && m_Enemies[enemy].glow > 0)
 			    r.SoftEllipse(s.x, s.y - 25, 27, 35, {.2f, 1.3f, .55f, .35f});
 	    });
@@ -772,10 +1064,13 @@ void FirstLevel::ModelActor(Actor& actor, LevelModel model, int enemy)
 		    if (enemy >= 0 && m_Enemies[enemy].windup > 0)
 		    {
 			    const Enemy& foe = m_Enemies[enemy];
-			    Point warning = foe.kind == EnemyKind::Archer || foe.kind == EnemyKind::Priest
+			    Point warning = foe.kind == EnemyKind::Archer || foe.kind == EnemyKind::Priest ||
+			                            foe.kind == EnemyKind::Wolf ||
+			                            foe.kind == EnemyKind::Guardian
 			                        ? Project(foe.attackTarget, m_Width, m_Height)
 			                        : s;
-			    r.Ellipse(warning.x, warning.y, 38, 19, {1, .19f, .10f, .35f});
+			    float radius = foe.kind == EnemyKind::Guardian ? 76.f : 38.f;
+			    r.Ellipse(warning.x, warning.y, radius, radius * .5f, {1, .19f, .10f, .35f});
 		    }
 	    });
 	if (enemy >= 0)
@@ -801,9 +1096,12 @@ void FirstLevel::BuildScene()
 	m_PlayerActor.ClearChildren();
 	m_Exits.clear();
 	m_SurveyStone = nullptr;
-	Color terrainColor = m_Region == Region::StoneRidge  ? Color{.39f, .40f, .29f, 1}
-	                     : m_Region == Region::MistShore ? Color{.24f, .36f, .35f, 1}
-	                                                     : Color{.25f, .34f, .18f, 1};
+	m_StoryContact = m_Smith = nullptr;
+	Color terrainColor = m_Region == Region::DwarfMine    ? Color{.34f, .33f, .28f, 1}
+	                     : m_Region == Region::DwarfCity  ? Color{.43f, .43f, .36f, 1}
+	                     : m_Region == Region::StoneRidge ? Color{.39f, .40f, .29f, 1}
+	                     : m_Region == Region::MistShore  ? Color{.24f, .36f, .35f, 1}
+	                                                      : Color{.25f, .34f, .18f, 1};
 	// Aggregate ground tiles in 8x8 groups; props still have independent Actor ownership.
 	for (int cy = 0; cy < Rows; cy += 8)
 		for (int cx = 0; cx < Columns; cx += 8)
@@ -847,7 +1145,10 @@ void FirstLevel::BuildScene()
 							    bool camp = Distance(p, Camp) < 9 || OnTravelRoad(p);
 							    r.Polygon(quad,
 							              camp ? Color{.48f, .40f, .27f, 1} : terrainColor,
-							              camp ? Material::Dirt : Material::Grass);
+							              m_Region == Region::DwarfCity   ? Material::Stone
+							              : camp                          ? Material::Dirt
+							              : m_Region == Region::DwarfMine ? Material::Stone
+							                                              : Material::Grass);
 						    }
 					    }
 			    });
@@ -872,16 +1173,23 @@ void FirstLevel::BuildScene()
 		Actor& gate =
 		    m_StaticActors.AddChild("Exit/" + std::to_string(m_Exits.size()), exit.position);
 		m_Exits.push_back(&gate);
+		Region destination = exit.destination;
 		gate.SetDraw(
-		    [this](Actor& actor, Renderer& r)
+		    [this, destination](Actor& actor, Renderer& r)
 		    {
 			    Point screen = Project(actor.WorldPosition(), m_Width, m_Height);
 			    if (screen.x > -100 && screen.x < m_Width + 100 && screen.y > -50 &&
 			        screen.y < m_Height + 150)
+			    {
 				    WorldTravel::DrawGate(r, screen, true);
+				    if (!m_Journal.CanTravel(m_Region, destination))
+					    for (int x = -18; x <= 18; x += 9)
+						    r.Rect(screen.x + x, screen.y - 53, 3, 53, {.50f, .40f, .22f, 1});
+			    }
 		    });
 	}
-	if (!WorldTravel::IsPassage(m_Region))
+	if (m_Region == Region::Basin || m_Region == Region::StoneRidge ||
+	    m_Region == Region::MistShore)
 	{
 		m_SurveyStone = &m_StaticActors.AddChild("SurveyStone", WorldTravel::SurveyStone);
 		ModelActor(*m_SurveyStone, LevelModel::Rock);
@@ -905,7 +1213,9 @@ void FirstLevel::BuildScene()
 				               Project({p.x + 16, p.y + 16}, m_Width, m_Height),
 				               Project({p.x, p.y + 16}, m_Width, m_Height)},
 				              terrainColor,
-				              Material::Grass);
+				              m_Region == Region::DwarfMine || m_Region == Region::DwarfCity
+				                  ? Material::Stone
+				                  : Material::Grass);
 			    });
 			for (int y = 3; y < 16; y += 5)
 				for (int x = 3; x < 16; x += 5)
@@ -915,13 +1225,14 @@ void FirstLevel::BuildScene()
 		}
 	for (size_t i = 0; i < m_Enemies.size(); ++i)
 	{
-		ModelActor(m_Enemies[i].actor, LevelModel::Slime, static_cast<int>(i));
+		ModelActor(m_Enemies[i].actor, EnemyModel(m_Enemies[i].kind), static_cast<int>(i));
 		m_Enemies[i].actor.SetUpdate(
 		    [this, i](Actor&, float dt)
 		    {
 			    UpdateEnemy(m_Enemies[i], dt);
 		    });
 	}
+	BuildDwarfScene();
 	m_PlayerActor.SetUpdate(
 	    [this](Actor&, float dt)
 	    {
@@ -985,7 +1296,9 @@ void FirstLevel::DrawHud(Renderer& r, int width, int height, bool paused)
 	r.Text(30,
 	       24,
 	       std::wstring(WorldTravel::Name(m_Region)) +
-	           (WorldTravel::IsPassage(m_Region) ? L" · 위험한 교역길" : L" · 탐험 지역"),
+	           (m_Region == Region::DwarfCity      ? L" · 평화 지역"
+	            : WorldTravel::IsPassage(m_Region) ? L" · 위험한 교역길"
+	                                               : L" · 탐험 지역"),
 	       Gold);
 	r.Text(30,
 	       51,
@@ -1005,7 +1318,8 @@ void FirstLevel::DrawHud(Renderer& r, int width, int height, bool paused)
 	       Cream);
 	r.Text(30,
 	       126,
-	       m_Level >= 3 && m_Shards > 0
+	       m_Region == Region::DwarfCity ? L"평화 구역 · 기록관과 대장장이에게 E로 대화"
+	       : m_Level >= 3 && m_Shards > 0
 	           ? L"성장 목표 달성 · 출입구에서 E로 다음 지역 이동"
 	           : L"성장 목표: 3레벨 + 탐험 결정 1개 · 출구는 언제든 이용 가능",
 	       Gold);
@@ -1031,17 +1345,24 @@ void FirstLevel::DrawHud(Renderer& r, int width, int height, bool paused)
 		       std::wstring(L"다음 출입구: ") + WorldTravel::Name(route[1]) + L"   [J] 경로와 기록",
 		       Cream);
 	else if (m_Journal.NextDestination() == m_Region)
-		r.Text(30, 201, L"이 지역의 이정표에서 E로 조사 · 지도에서 노란 점 확인", Cream);
+		r.Text(30, 201, L"표시된 주민·기록대·이정표에서 E · 지도에서 노란 점 확인", Cream);
 	if (m_MessageTime > 0)
 		r.Text(30, 242, m_Message, Gold);
 	int nearbyExit = NearbyExit();
 	if (nearbyExit >= 0 && !m_Map && !m_Stats && !paused && m_Hp > 0)
-		r.Text(30,
-		       height - 120.f,
-		       std::wstring(L"[E] ") +
-		           WorldTravel::Name(WorldTravel::Exits(m_Region)[nearbyExit].destination) +
-		           L" 이동",
-		       Gold);
+		r.Text(
+		    30,
+		    height - 120.f,
+		    std::wstring(L"[E] ") +
+		        WorldTravel::Name(WorldTravel::Exits(m_Region)[nearbyExit].destination) +
+		        (m_Journal.CanTravel(m_Region, WorldTravel::Exits(m_Region)[nearbyExit].destination)
+		             ? L" 이동"
+		             : L" · 봉인된 길"),
+		    Gold);
+	if (((m_StoryContact && Distance(m_Player, m_StoryContact->WorldPosition()) < 2.5f) ||
+	     (m_Smith && Distance(m_Player, m_Smith->WorldPosition()) < 2.5f)) &&
+	    !m_Map && !m_Stats && !paused && !IsStoryOpen())
+		r.Text(30, height - 120.f, L"[E] 드워프 이야기 · 대화/기록 조사", Gold);
 	if (m_Map)
 	{
 		float scale = std::min((width - 100.f) / Columns, (height - 140.f) / Rows);
@@ -1072,16 +1393,36 @@ void FirstLevel::DrawHud(Renderer& r, int width, int height, bool paused)
 			Point position = m_Exits[i]->WorldPosition();
 			bool target =
 			    route.size() > 1 && WorldTravel::Exits(m_Region)[i].destination == route[1];
-			mark(position, target ? Gold : Color{.3f, 1, .85f, 1});
+			bool open = m_Journal.CanTravel(m_Region, WorldTravel::Exits(m_Region)[i].destination);
+			mark(position,
+			     !open    ? Color{.7f, .4f, .2f, 1}
+			     : target ? Gold
+			              : Color{.3f, 1, .85f, 1});
 			float labelX = std::min(left + position.x / 2 * scale, left + (Columns - 24) * scale);
 			r.Text(labelX,
 			       top + position.y / 2 * scale + 8,
-			       WorldTravel::Name(WorldTravel::Exits(m_Region)[i].destination),
+			       std::wstring(open ? L"" : L"[봉인] ") +
+			           WorldTravel::Name(WorldTravel::Exits(m_Region)[i].destination),
 			       Cream);
 		}
 		if (m_SurveyStone)
 			mark(m_SurveyStone->WorldPosition(),
-			     m_Journal.NextDestination() == m_Region ? Gold : Color{.8f, .7f, .4f, 1});
+			     m_Journal.NextDestination() == m_Region &&
+			             Distance(StoryTarget(), WorldTravel::SurveyStone) < .1f
+			         ? Gold
+			         : Color{.8f, .7f, .4f, 1});
+		if (m_StoryContact)
+		{
+			bool target = m_Journal.NextDestination() == m_Region &&
+			              Distance(StoryTarget(), m_StoryContact->WorldPosition()) < .1f;
+			mark(m_StoryContact->WorldPosition(), target ? Gold : Color{.75f, .55f, 1, 1});
+			r.Text(left + m_StoryContact->WorldPosition().x / 2 * scale - 65,
+			       top + m_StoryContact->WorldPosition().y / 2 * scale - 28,
+			       m_Region == Region::DwarfMine   ? L"작업 기록대"
+			       : m_Region == Region::DwarfCity ? L"기록관 브린"
+			                                       : L"파수꾼 토르빅",
+			       Cream);
+		}
 		mark(m_Player, {1, 1, 1, 1});
 		r.Text(left,
 		       top - 30,
@@ -1090,8 +1431,8 @@ void FirstLevel::DrawHud(Renderer& r, int width, int height, bool paused)
 	}
 	if (m_Stats)
 	{
-		float x = width * .5f - 240, y = height * .5f - 150;
-		r.Rect(x, y, 480, 300, {.025f, .055f, .055f, .98f});
+		float x = width * .5f - 300, y = height * .5f - 180;
+		r.Rect(x, y, 600, 360, {.025f, .055f, .055f, .98f});
 		r.Text(x + 22, y + 20, L"가방과 성장 기록 · I 닫기", Gold);
 		r.Text(x + 22,
 		       y + 62,
@@ -1104,7 +1445,13 @@ void FirstLevel::DrawHud(Renderer& r, int width, int height, bool paused)
 		       Cream);
 		r.Text(x + 22, y + 145, L"레벨마다 공격 +4 / 최대 체력 +15 / 방어 +1", Cream);
 		r.Text(x + 22, y + 182, L"레벨 상승 시 현재 체력은 자동 회복되지 않습니다.", Cream);
-		r.Text(x + 22, y + 223, L"전리품과 성장 기록은 이번 실행 동안 유지됩니다.", Cream);
+		r.Text(x + 22,
+		       y + 223,
+		       L"야외 재료 " + std::to_wstring(m_Materials[0]) + L" · 광맥 광석 " +
+		           std::to_wstring(m_Materials[1]) + L" · 수호체 부품 " +
+		           std::to_wstring(m_Materials[2]),
+		       Gold);
+		r.Text(x + 22, y + 275, L"전리품과 성장 기록은 이번 실행 동안 유지됩니다.", Cream);
 	}
 	if (paused || m_Hp <= 0)
 	{
@@ -1118,6 +1465,41 @@ void FirstLevel::DrawHud(Renderer& r, int width, int height, bool paused)
 		       height * .5f + 12,
 		       m_Hp <= 0 ? L"R: 경험치·전리품을 초기화하고 새 원정 시작" : L"Q: 게임 종료",
 		       Cream);
+	}
+
+	if (IsStoryOpen() && !paused)
+	{
+		float panelWidth = std::min(1000.f, width - 70.f), left = (width - panelWidth) * .5f;
+		float top = height - 320.f;
+		r.Rect(left, top, panelWidth, 210, {.035f, .065f, .065f, .98f});
+		r.Text(left + 22, top + 15, L"돌에 새긴 귀환 약속", Gold);
+		if (m_ChoosingDwarf)
+		{
+			r.Text(left + 22, top + 55, L"[1] 감시 아래 교역 재개 · 분지 지름길 개방", Cream);
+			r.Text(left + 22,
+			       top + 91,
+			       L"[2] 봉인 유지 · 기존 산길 이용, 기록과 안전 점검 우선",
+			       Cream);
+			r.Text(left + 22,
+			       top + 145,
+			       L"선택은 이번 여행에 남습니다. 두 선택 모두 다음 모험으로 이어집니다.",
+			       Gold);
+		}
+		else
+		{
+			const auto& line = m_Dialogue[m_DialoguePage];
+			int columns = std::max(1, static_cast<int>((panelWidth - 44) / 19));
+			for (size_t i = 0; i < line.size(); i += columns)
+				r.Text(left + 22,
+				       top + 53 + static_cast<float>(i / columns) * 27,
+				       line.substr(i, columns),
+				       Cream);
+			r.Text(left + 22,
+			       top + 170,
+			       L"[E / Space] 다음 · " + std::to_wstring(m_DialoguePage + 1) + L" / " +
+			           std::to_wstring(m_Dialogue.size()),
+			       Gold);
+		}
 	}
 	m_Journal.Draw(r, width, height, m_Region);
 	r.Flush();

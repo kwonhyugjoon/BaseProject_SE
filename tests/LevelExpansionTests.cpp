@@ -32,17 +32,19 @@ int main()
 		}
 		for (int count : sectors)
 			assert(count == 3);
-		assert(types.size() == 4);
+		assert(types.size() == 3 && types.count("Wolf") && !types.count("Priest") &&
+		       !types.count("Slime"));
 		level.CaptureMonitorState(snapshot);
 		int monitoredTotal = 0, monitoredAlive = 0;
 		for (const auto& count : snapshot.mobs)
 		{
-			assert(count.total > 0 && count.alive == count.total);
+			assert(count.alive == count.total);
 			monitoredTotal += count.total;
 			monitoredAlive += count.alive;
 		}
 		assert(snapshot.huntingLoaded && monitoredTotal == 48 && monitoredAlive == 48);
-		printf("Seed %u: 48 unique spawns, 16 populated sectors, four enemy types.\n", seed);
+		printf("Seed %u: 48 unique spawns, 16 populated sectors, three trade-road enemy types.\n",
+		       seed);
 	}
 	Actor* enemies = level.Scene().World().Find("Enemies");
 	std::set<std::string> selected;
@@ -66,9 +68,9 @@ int main()
 	int dead = 0;
 	for (const auto& count : snapshot.mobs)
 		dead += count.total - count.alive;
-	assert(dead == 4);
+	assert(dead == 3);
 	Actor* drops = level.Scene().World().Find("Drops");
-	assert(drops->Children().size() == 4);
+	assert(drops->Children().size() == 3);
 	level.Key('e');
 	assert(drops->Children().empty());
 	keys[' '] = false;
@@ -79,5 +81,5 @@ int main()
 	level.CaptureMonitorState(snapshot);
 	for (const auto& count : snapshot.mobs)
 		assert(count.alive == count.total);
-	puts("Four-type kills, loot pickup and respawn passed without an OpenGL window.");
+	puts("Trade-road kills, themed loot pickup and respawn passed without an OpenGL window.");
 }

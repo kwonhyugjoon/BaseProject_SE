@@ -104,7 +104,8 @@ function render(snapshot) {
     byId("dead-count").textContent = snapshot.hunting.loaded ? snapshot.counts.deadMobs : "—";
     byId("mob-total").textContent = snapshot.hunting.loaded ? `전체 배치 ${snapshot.counts.mobs}개` : "사냥터에 진입하면 집계";
     const sceneName = {tutorial: "갈대여울", first_level: "옛 드워프 교역로", basin: "솔바람 분지",
-        echo_hall: "메아리 숲길", stone_ridge: "돌등성이 전초지", mist_shore: "안개 호숫가"};
+        echo_hall: "메아리 숲길", stone_ridge: "돌등성이 전초지", mist_shore: "안개 호숫가",
+        dwarf_mine: "깊은돌 폐광길", dwarf_city: "깊은돌 도시 앞마당"};
     byId("scene").textContent = `${sceneName[snapshot.scene] || snapshot.scene}${snapshot.paused ? " / 일시정지" : ""}`;
     byId("updated").textContent = `마지막 상태: ${new Date(snapshot.sampledAt).toLocaleTimeString("ko-KR")}`;
     renderVillages(snapshot);

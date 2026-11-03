@@ -25,6 +25,8 @@ void QuestJournal::Reset()
 {
 	m_Stage = Stage::Elder;
 	m_LakeChoice = 0;
+	m_DwarfStage = DwarfStage::Meeting;
+	m_DwarfChoice = 0;
 	m_Visited.fill(false);
 	m_Investigated.fill(false);
 	m_Routes.clear();
@@ -68,6 +70,8 @@ bool QuestJournal::Investigated(Region region) const
 
 void QuestJournal::RecordTravel(Region from, Region to)
 {
+	if (!CanTravel(from, to))
+		return;
 	const auto& exits = WorldTravel::Exits(from);
 	if (std::none_of(exits.begin(),
 	                 exits.end(),
@@ -95,6 +99,60 @@ bool QuestJournal::Investigate(Region region)
 	return true;
 }
 
+bool QuestJournal::StartDwarfStory()
+{
+	if (m_Stage != Stage::Complete || !Investigated(Region::StoneRidge) ||
+	    m_DwarfStage != DwarfStage::Meeting)
+		return false;
+	m_DwarfStage = DwarfStage::Record;
+	return true;
+}
+
+bool QuestJournal::ReadDwarfRecord()
+{
+	if (m_DwarfStage != DwarfStage::Record || !Visited(Region::DwarfMine))
+		return false;
+	m_DwarfStage = DwarfStage::Report;
+	return true;
+}
+
+bool QuestJournal::HearDwarfCouncil()
+{
+	if (m_DwarfStage != DwarfStage::Report || !Visited(Region::DwarfCity))
+		return false;
+	m_DwarfStage = DwarfStage::Choice;
+	return true;
+}
+
+bool QuestJournal::ChooseDwarf(int value)
+{
+	if (m_DwarfStage != DwarfStage::Choice || (value != 1 && value != 2))
+		return false;
+	m_DwarfChoice = value;
+	m_DwarfStage = DwarfStage::Complete;
+	return true;
+}
+
+QuestJournal::DwarfStage QuestJournal::DwarfProgress() const
+{
+	return m_DwarfStage;
+}
+
+int QuestJournal::DwarfChoice() const
+{
+	return m_DwarfChoice;
+}
+
+bool QuestJournal::CanTravel(Region from, Region to) const
+{
+	if ((from == Region::Basin && to == Region::DwarfMine) ||
+	    (from == Region::DwarfMine && to == Region::Basin))
+		return m_DwarfChoice == 1;
+	if (from == Region::DwarfMine && to == Region::DwarfCity)
+		return m_DwarfStage >= DwarfStage::Report;
+	return true;
+}
+
 const QuestJournal::Stage& QuestJournal::TutorialStage() const
 {
 	return m_Stage;
@@ -109,16 +167,28 @@ Region QuestJournal::NextDestination() const
 {
 	if (m_Stage != Stage::Complete)
 		return Region::Village;
+	if (m_DwarfStage == DwarfStage::Record)
+		return Region::DwarfMine;
+	if (m_DwarfStage == DwarfStage::Report || m_DwarfStage == DwarfStage::Choice)
+		return Region::DwarfCity;
 	for (Region region : SurveyRegions)
 		if (!Investigated(region))
 			return region;
-	return Region::None;
+	return m_DwarfStage == DwarfStage::Meeting ? Region::StoneRidge : Region::None;
 }
 
 const wchar_t* QuestJournal::Objective() const
 {
 	if (m_Stage != Stage::Complete)
 		return TutorialObjectives[static_cast<int>(m_Stage)];
+	if (m_DwarfStage == DwarfStage::Record)
+		return L"깊은돌 폐광길의 작업 기록 조사하기";
+	if (m_DwarfStage == DwarfStage::Report)
+		return L"깊은돌 도시의 기록관 브린에게 보고하기";
+	if (m_DwarfStage == DwarfStage::Choice)
+		return L"기록관과 대화하여 옛 교역길 개방 여부 결정하기";
+	if (NextDestination() == Region::StoneRidge && Investigated(Region::StoneRidge))
+		return L"돌등성이의 파수꾼 토르빅과 대화하기";
 	switch (NextDestination())
 	{
 	case Region::Basin:
@@ -128,7 +198,7 @@ const wchar_t* QuestJournal::Objective() const
 	case Region::MistShore:
 		return L"안개 호숫가의 물결 표식 기록하기";
 	default:
-		return L"이번 여행 기록 완료 · 자유 탐험을 계속할 수 있습니다";
+		return L"드워프 이야기와 이정표 기록 완료 · 다음 여행은 고원과 용의 흔적으로 이어집니다";
 	}
 }
 
@@ -145,6 +215,8 @@ std::vector<Region> QuestJournal::RouteToNext(Region from) const
 	     ++i)
 		for (const auto& exit : WorldTravel::Exits(pending[i]))
 		{
+			if (!CanTravel(pending[i], exit.destination))
+				continue;
 			auto& parent = previous[static_cast<size_t>(exit.destination)];
 			if (parent != Region::None)
 				continue;
@@ -171,6 +243,8 @@ std::vector<std::wstring> QuestJournal::Lines(int tab, Region current) const
 	{
 		lines.push_back(m_Stage == Stage::Complete ? L"의뢰 · 옛길의 이정표"
 		                                           : L"의뢰 · 지도 밖의 첫 걸음");
+		if (m_DwarfStage != DwarfStage::Meeting || Investigated(Region::StoneRidge))
+			lines.push_back(L"드워프 이야기 · 돌에 새긴 귀환 약속");
 		lines.push_back(Objective());
 		auto route = RouteToNext(current);
 		if (route.size() == 1)
@@ -186,7 +260,7 @@ std::vector<std::wstring> QuestJournal::Lines(int tab, Region current) const
 		}
 		lines.push_back(L"이정표 조사 위치는 각 야외 지역 지도의 황토색 점입니다.");
 		lines.push_back(
-		    L"다른 순서로 탐험해도 조사 기록은 남습니다. 출구 이용에 완료 조건은 없습니다.");
+		    L"조사 순서는 자유입니다. 도시 문은 작업 기록 확인 후, 분지 지름길은 개방 선택 후 이용합니다.");
 	}
 	else if (tab == 1)
 	{
@@ -212,6 +286,20 @@ std::vector<std::wstring> QuestJournal::Lines(int tab, Region current) const
 		for (int i = 0; i < 3; ++i)
 			if (Investigated(SurveyRegions[i]))
 				lines.push_back(surveys[i]);
+		if (m_DwarfStage >= DwarfStage::Record)
+			lines.push_back(
+			    L"토르빅의 부탁: 폐광의 자동 수호체는 침입자가 아니라 고장 난 길잡이다. 작업 기록을 찾아 달라.");
+		if (m_DwarfStage >= DwarfStage::Report)
+			lines.push_back(
+			    L"작업 기록: 옛길은 사람과 물자를 위한 길이었다. 봉인은 침입보다 무분별한 채굴을 막으려 세워졌다.");
+		if (m_DwarfStage >= DwarfStage::Choice)
+			lines.push_back(
+			    L"브린의 설명: 분지 지름길을 열면 교역을 재개하지만 경계 감시가 필요하다. 봉인을 유지해도 산길로 왕래할 수 있다.");
+		if (m_DwarfChoice)
+			lines.push_back(
+			    m_DwarfChoice == 1
+			        ? L"드워프 선택: 감시 아래 교역 재개. 솔바람 분지 ↔ 깊은돌 폐광길 지름길 개방. 도시는 여행자를 협력자로 맞이한다."
+			        : L"드워프 선택: 옛길 봉인 유지. 지름길은 닫히고 돌등성이 산길은 유지. 도시는 안전 점검과 기록 보존에 집중한다.");
 	}
 	else
 	{

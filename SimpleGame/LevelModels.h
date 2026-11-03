@@ -9,6 +9,15 @@ enum class LevelModel
 	Slime,
 	Loot,
 	Camp,
+	Wolf,
+	Beetle,
+	Guardian,
+	Dwarf,
+	Archive,
+	DwarfHall,
+	TrailLoot,
+	OreLoot,
+	PartsLoot,
 	Count
 };
 

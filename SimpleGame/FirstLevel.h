@@ -31,7 +31,12 @@ class FirstLevel
 
 	bool CanOpenJournal() const
 	{
-		return !m_Map && !m_Stats && m_Hp > 0;
+		return !m_Map && !m_Stats && m_Dialogue.empty() && !m_ChoosingDwarf && m_Hp > 0;
+	}
+
+	bool IsStoryOpen() const
+	{
+		return !m_Dialogue.empty() || m_ChoosingDwarf;
 	}
 
 	Exit RequestedExit() const
@@ -64,7 +69,11 @@ class FirstLevel
 		Slime,
 		Bandit,
 		Archer,
-		Priest
+		Priest,
+		Wolf,
+		Beetle,
+		Guardian,
+		Count
 	};
 
 	struct EnemyStats
@@ -83,7 +92,8 @@ class FirstLevel
 		Point home;
 		EnemyKind kind;
 		Point attackTarget = {0, 0};
-		float supportCooldown = 3, glow = 0;
+		float supportCooldown = 3, glow = 0, charge = 0;
+		Point chargeDirection = {};
 		int facing = 1;
 		bool moving = false;
 		int hp = 24;
@@ -99,6 +109,15 @@ class FirstLevel
 	{
 		Actor* actor;
 		int coins, shards;
+		int material = -1;
+	};
+
+	enum class StoryAction
+	{
+		None,
+		Start,
+		Record,
+		Council
 	};
 
 	QuestJournal& m_Journal;
@@ -117,6 +136,12 @@ class FirstLevel
 	std::vector<Drop> m_Drops;
 	std::vector<Actor*> m_Exits;
 	Actor* m_SurveyStone = nullptr;
+	Actor* m_StoryContact = nullptr;
+	Actor* m_Smith = nullptr;
+	std::vector<std::wstring> m_Dialogue;
+	size_t m_DialoguePage = 0;
+	StoryAction m_StoryAction = StoryAction::None;
+	bool m_ChoosingDwarf = false;
 	Region m_Region = Region::Passage;
 	Exit m_RequestedExit = Exit::None;
 	WorldTravel::ReturnTrail m_ReturnTrail;
@@ -124,6 +149,7 @@ class FirstLevel
 	LevelModels m_Models;
 	Point m_Camera = WorldTravel::NearGate, m_Aim = {1, 0};
 	int m_Level = 1, m_Experience = 0, m_Hp = 100, m_Coins = 0, m_Shards = 0;
+	std::array<int, 3> m_Materials = {};
 	int m_Facing = 1, m_Kills = 0, m_FlowTarget = -1;
 	uint32_t m_Seed = 1, m_Random = 1;
 	float m_Time = 0, m_AttackCooldown = 0, m_Swing = 0, m_HitCooldown = 0, m_MessageTime = 0;
@@ -150,6 +176,11 @@ class FirstLevel
 	void UpdatePlayer(float dt);
 	void UpdateEnemy(Enemy& enemy, float dt);
 	void BuildScene();
+	void BuildDwarfScene();
+	void InteractStory();
+	void FinishStory();
+	Point StoryTarget() const;
+	LevelModel EnemyModel(EnemyKind kind) const;
 	void ModelActor(Actor& actor, LevelModel model, int enemy = -1);
 	void DrawHud(Renderer& renderer, int width, int height, bool paused);
 	void Attack();
