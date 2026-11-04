@@ -1,0 +1,3 @@
+# Keep bundled font and license bytes exactly as supplied upstream.
+SimpleGame/Fonts/*.ttf -text
+SimpleGame/Fonts/OFL.txt -text whitespace=-blank-at-eol,-blank-at-eof,-space-before-tab

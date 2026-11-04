@@ -6,6 +6,7 @@ flat in int v_Material;
 flat in int v_Local;
 uniform float u_Time;
 uniform sampler2D u_Atlas;
+uniform sampler2D u_Font;
 layout(location = 0) out vec4 FragColor;
 
 float hash(vec2 p)
@@ -35,6 +36,12 @@ void main()
 	vec3 c = v_Color.rgb;
 	float alpha = v_Color.a;
 	vec2 p = v_Local == 1 ? v_UV : v_World;
+
+	if (v_Material == 12) // Cached UI glyph coverage, outside world postprocessing.
+	{
+		FragColor = vec4(c, alpha * texture(u_Font, v_UV).r);
+		return;
+	}
 
 	if (v_Material == 7)
 	{

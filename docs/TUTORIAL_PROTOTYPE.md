@@ -111,7 +111,7 @@ C++ / OpenGL을 유지한다. 2D 다각형을 월드 좌표에서 쿼터뷰로 �
 
 ## 실행 환경과 사용자 확인 항목
 
-기존 SimpleGame.sln에서 빌드한다. OpenGL 3.3 compatibility context와 Windows 맑은 고딕을 사용한다. 셰이더는 빌드 출력의 Shaders 폴더에 복사되도록 설정했다. 기존 freeglut.dll·glew32.dll은 빌드 플랫폼(Win32/x64)에 맞는 출력 폴더의 파일을 사용한다. DLL은 기존 로컬 환경에 있으며 저장소에서 새로 받는 경우 별도 준비가 필요하다.
+기존 SimpleGame.sln 또는 CMake로 빌드한다. 2026-11-04 강의 작업에서 GLFW와 소스 기반 GLFW/GLEW 정적 빌드로 전환해 외부 DLL 수동 준비를 없앴다. Windows의 OpenGL 3.3 Compatibility와 기존 폰트 메트릭을 유지하고, GPU 폰트 데이터는 캐시한다. Shaders·Fonts·Monitor와 라이선스를 출력 폴더에 복사한다. [빌드 설명](../README.md)과 [전환 검증](GLFW_MIGRATION.md)을 따른다.
 
 기본 창은 1280 × 800, 최소 창 크기는 1100 × 700이다.
 

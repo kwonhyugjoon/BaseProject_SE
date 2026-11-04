@@ -2,7 +2,6 @@
 #include "FirstLevel.h"
 #include "QuestJournal.h"
 #include "MonitorState.h"
-#include <windows.h>
 #include <algorithm>
 #include <cmath>
 #include <queue>
@@ -644,7 +643,7 @@ void FirstLevel::UpdatePlayer(float dt)
 	float length = std::hypot(sx, sy);
 	if (length > 0)
 	{
-		float speed = m_Input[VK_SHIFT] ? 168.f : 84.f;
+		float speed = m_Input[GameInput::Sprint] ? 168.f : 84.f;
 		float vx = sx / length * speed * dt, vy = sy / length * speed * dt;
 		Point delta = {(vx / 23 + vy / 11.5f) * .5f, (vy / 11.5f - vx / 23) * .5f};
 		float distance = std::hypot(delta.x, delta.y);
@@ -1244,7 +1243,7 @@ void FirstLevel::BuildScene()
 	    {
 		    Point s = Project(actor.Position(), m_Width, m_Height);
 		    Color coat = m_HitCooldown > 0 ? Color{1, .30f, .25f, 1} : Color{.35f, .49f, .67f, 1};
-		    float cadence = m_Input && m_Input[VK_SHIFT] ? 20.f : 10.f;
+		    float cadence = m_Input && m_Input[GameInput::Sprint] ? 20.f : 10.f;
 		    r.Character(
 		        s.x, s.y, m_Facing, m_Walking ? static_cast<int>(m_Time * cadence) % 8 : 8, coat);
 	    });

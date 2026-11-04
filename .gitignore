@@ -21,3 +21,8 @@
 /SimpleGame/Release/
 /SimpleGame/x64/
 *.user
+
+# CMake build output
+/out/
+/build/
+/CMakeUserPresets.json

@@ -13,7 +13,7 @@ namespace
 		input['a'] = axes.x < 0;
 		input['s'] = axes.y > 0;
 		input['w'] = axes.y < 0;
-		input[VK_SHIFT] = sprint;
+		input[GameInput::Sprint] = sprint;
 	}
 
 	float ScreenDistance(Point before, Point after)
@@ -52,7 +52,7 @@ int main()
 		}
 	// Releasing Shift restores walking speed while the movement key remains held.
 	Point start = player;
-	keys[VK_SHIFT] = false;
+	keys[GameInput::Sprint] = false;
 	UpdatePlayer(dt);
 	assert(std::abs(ScreenDistance(start, player) - 84.f * dt) < .002f);
 	Movement(keys, {0, 0}, true);
@@ -105,7 +105,7 @@ int main()
 	assert(ScreenDistance(start, traveler->WorldPosition()) == 0);
 	Movement(keys, {1, 0}, true);
 	KeyDown('j', 0, 0);
-	assert(questJournal.IsOpen() && !keys['d'] && !keys[VK_SHIFT]);
+	assert(questJournal.IsOpen() && !keys['d'] && !keys[GameInput::Sprint]);
 	KeyDown('d', 0, 0);
 	assert(!keys['d']);
 	KeyDown(27, 0, 0);

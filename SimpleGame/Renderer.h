@@ -4,7 +4,8 @@
 #include <map>
 #include <initializer_list>
 #include <functional>
-#include "Dependencies/glew.h"
+#include <GL/glew.h>
+#include "FontRasterizer.h"
 
 struct Point
 {
@@ -28,7 +29,8 @@ enum class Material
 	Plaster,
 	Foliage,
 	Flame,
-	Pond
+	Pond,
+	Font
 };
 
 struct ModelVertex
@@ -88,7 +90,16 @@ class Renderer
 	Point m_DrawOffset = {0, 0};
 	bool m_Initialized = false, m_TargetsReady = false;
 	std::vector<Vertex> m_Vertices;
-	std::map<wchar_t, GLuint> m_Glyphs;
-	std::vector<GLuint> m_TextLists;
-	void* m_Font = nullptr;
+
+	struct Glyph
+	{
+		int width, height, left, top, advance, x, y;
+	};
+
+	static constexpr int FontAtlasSize = 2048;
+	std::map<uint32_t, Glyph> m_Glyphs;
+	FontRasterizer m_Font;
+	GLuint m_FontAtlas = 0;
+	int m_FontX = 1, m_FontY = 1, m_FontRowHeight = 0;
+	const Glyph& GetGlyph(uint32_t codepoint);
 };

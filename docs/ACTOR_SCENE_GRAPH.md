@@ -82,11 +82,9 @@ group.SetEnabled(false);         // 하위 객체를 포함해 업데이트 중�
 필요 시 Visual Studio 개발자 명령 프롬프트에서 저장소 루트 기준으로 독립 테스트를 실행할 수 있다. 게임이나 OpenGL 창을 실행하는 테스트는 아니다.
 
 ```bat
-set "ACTOR_TEST_REPO=%CD%"
-pushd "%TEMP%"
-cl /nologo /EHsc /std:c++14 /utf-8 "%ACTOR_TEST_REPO%\tests\SceneGraphTests.cpp" "%ACTOR_TEST_REPO%\SimpleGame\Actor.cpp" "%ACTOR_TEST_REPO%\SimpleGame\SceneGraph.cpp" /Fe:BaseProjectSceneGraphTests.exe
-if not errorlevel 1 BaseProjectSceneGraphTests.exe
-popd
+cmake --preset vs2022-x64
+cmake --build --preset release-x64 --target SceneGraphTests
+ctest --preset release-x64 -R "^SceneGraphTests$"
 ```
 
 게임에서는 튜토리얼 이동·충돌·대화·호수 선택, R 재시작, 배치 출입구의 E 지역 이동/귀환, 적 사망/재등장, 전리품 획득, 그림자·UI 순서와 숲에서의 프레임을 확인한다. 출입구·외곽 장식은 해당 지역 그래프의 Actor로 관리한다. 노드 변환은 집이나 나무 그룹의 위치를 설정해 자식 그림자와 함께 움직이는지도 확인한다.

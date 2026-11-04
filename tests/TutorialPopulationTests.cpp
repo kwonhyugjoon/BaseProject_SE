@@ -1,4 +1,4 @@
-// Exercise the tutorial's internal data without opening its GLUT application.
+// Exercise the tutorial's internal data without opening its GLFW application.
 #define main TutorialApplicationMain
 #include "../SimpleGame/SimpleGame.cpp"
 #undef main

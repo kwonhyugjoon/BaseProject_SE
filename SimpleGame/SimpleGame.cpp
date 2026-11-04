@@ -12,7 +12,9 @@ This program is distributed WITHOUT ANY WARRANTY.
 #include "TreeCollisionGrid.h"
 #include "MonitorState.h"
 #include "MonitorServer.h"
-#include "Dependencies/freeglut.h"
+#define GLFW_INCLUDE_NONE
+#include <GLFW/glfw3.h>
+#include <iostream>
 #include <algorithm>
 #include <array>
 #include <chrono>
@@ -35,6 +37,7 @@ namespace
 	const Color Cream = {.94f, .90f, .76f, 1}, Gold = {.98f, .73f, .36f, 1};
 	const Color Teal = {.40f, .89f, .83f, 1}, Panel = {.035f, .075f, .085f, .94f};
 	Renderer* renderer = nullptr;
+	GLFWwindow* gameWindow = nullptr;
 	SceneGraph tutorialScene;
 	Actor& groundActors = tutorialScene.World().AddChild("Ground");
 	Actor& houseActors = tutorialScene.World().AddChild("Houses");
@@ -1410,7 +1413,7 @@ namespace
 			renderer->SoftEllipse(p.x, p.y, 17, 8, {.75f, .88f, .67f, .36f});
 		bool moving = hero ? walking : people[index].moving;
 		float breath = moving ? 0 : std::sin(elapsed * 1.8f + index) * .65f;
-		float cadence = hero && keys[VK_SHIFT] ? 20.f : 10.f;
+		float cadence = hero && keys[GameInput::Sprint] ? 20.f : 10.f;
 		int frame = moving ? (int)(elapsed * cadence) % 8 : 8;
 		renderer->Character(
 		    p.x, p.y + breath, hero ? playerFacing : people[index].facing, frame, coat);
@@ -1481,7 +1484,7 @@ namespace
 				playerFacing = std::abs(sx) > std::abs(sy) ? (sx > 0 ? 0 : 2) : (sy > 0 ? 1 : 3);
 
 				// Normalize screen input before inverse projection; Shift doubles travel speed.
-				float speed = keys[VK_SHIFT] ? 168.f : 84.f;
+				float speed = keys[GameInput::Sprint] ? 168.f : 84.f;
 				float vx = sx / len * speed * dt, vy = sy / len * speed * dt;
 				float dx = (vx / 23.f + vy / 11.5f) * .5f, dy = (vy / 11.5f - vx / 23.f) * .5f;
 
@@ -2071,7 +2074,7 @@ namespace
 			tutorialScene.DrawUI(*renderer);
 		}
 		auto submitted = FrameClock::now();
-		glutSwapBuffers();
+		glfwSwapBuffers(gameWindow);
 		auto end = FrameClock::now();
 		static auto previous = start;
 		static double window = 0, updateMs = 0, drawMs = 0, presentMs = 0, worstMs = 0;
@@ -2101,7 +2104,7 @@ namespace
 			    updateMs / frames,
 			    drawMs / frames,
 			    presentMs / frames);
-			glutSetWindowTitle(title);
+			glfwSetWindowTitle(gameWindow, title);
 			window = updateMs = drawMs = presentMs = worstMs = 0;
 			frames = 0;
 		}
@@ -2174,7 +2177,7 @@ namespace
 			else if (paused)
 			{
 				if (key == 'q')
-					glutLeaveMainLoop();
+					glfwSetWindowShouldClose(gameWindow, GLFW_TRUE);
 			}
 			else
 			{
@@ -2221,7 +2224,7 @@ namespace
 				Reset();
 
 			if (key == 'q')
-				glutLeaveMainLoop();
+				glfwSetWindowShouldClose(gameWindow, GLFW_TRUE);
 			return;
 		}
 
@@ -2277,7 +2280,7 @@ namespace
 
 	void SpecialKeyDown(int key, int, int)
 	{
-		if (key == GLUT_KEY_F9)
+		if (key == GLFW_KEY_F9)
 		{
 			std::fill(std::begin(keys), std::end(keys), false);
 			monitorServer.OpenBrowser();
@@ -2291,10 +2294,11 @@ namespace
 		lastFrame = now;
 
 		// Focus loss clears held keys so alt-tab cannot leave the player walking.
-		if (GetForegroundWindow() != WindowFromDC(wglGetCurrentDC()))
+		if (gameWindow && !glfwGetWindowAttrib(gameWindow, GLFW_FOCUSED))
 			std::fill(std::begin(keys), std::end(keys), false);
-		else
-			keys[VK_SHIFT] = (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0;
+		else if (gameWindow)
+			keys[GameInput::Sprint] = glfwGetKey(gameWindow, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS ||
+			                          glfwGetKey(gameWindow, GLFW_KEY_RIGHT_SHIFT) == GLFW_PRESS;
 		walking = false;
 
 		if (paused || questJournal.IsOpen())
@@ -2324,18 +2328,44 @@ namespace
 		}
 	}
 
-	void RequestFrame()
+	void WindowKey(GLFWwindow*, int key, int, int action, int)
 	{
-		glutPostRedisplay();
+		if (action == GLFW_REPEAT)
+			return;
+		if (key == GLFW_KEY_F9)
+		{
+			if (action == GLFW_PRESS)
+				SpecialKeyDown(key, 0, 0);
+			return;
+		}
+		int mapped = key == GLFW_KEY_ESCAPE ? 27 : key;
+		if (mapped < GLFW_KEY_SPACE || mapped > GLFW_KEY_GRAVE_ACCENT)
+		{
+			if (mapped != 27)
+				return;
+		}
+		if (action == GLFW_PRESS)
+			KeyDown(static_cast<unsigned char>(mapped), 0, 0);
+		else if (action == GLFW_RELEASE)
+			KeyUp(static_cast<unsigned char>(mapped), 0, 0);
+	}
+
+	void FocusChanged(GLFWwindow*, int focused)
+	{
+		if (!focused)
+		{
+			std::fill(std::begin(keys), std::end(keys), false);
+			walking = false;
+		}
 	}
 
 	void Resize(int w, int h)
 	{
-		width = std::max(1100, w);
-		height = std::max(700, h);
-
-		if (w < 1100 || h < 700)
-			glutReshapeWindow(width, height);
+		if (w > 0 && h > 0)
+		{
+			width = w;
+			height = h;
+		}
 	}
 
 	void Close()
@@ -2346,54 +2376,94 @@ namespace
 	}
 }
 
-int main(int argc, char** argv)
+int main()
 {
-	glutInit(&argc, argv);
-	glutInitContextVersion(3, 3);
-	glutInitContextProfile(GLUT_COMPATIBILITY_PROFILE);
-	glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGBA);
-	glutInitWindowSize(width, height);
-	glutCreateWindow("Reedmere - The First Uncharted Step");
-	glutSetOption(GLUT_ACTION_ON_WINDOW_CLOSE, GLUT_ACTION_GLUTMAINLOOP_RETURNS);
-
+	glfwSetErrorCallback(
+	    [](int code, const char* message)
+	    {
+		    std::cerr << "GLFW " << code << ": " << message << '\n';
+	    });
+	if (!glfwInit())
+		return 1;
+	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+#ifdef __APPLE__
+	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+	glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GLFW_TRUE);
+#else
+	// Preserve the original FreeGLUT compatibility profile on existing platforms.
+	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_COMPAT_PROFILE);
+#endif
+	glfwWindowHint(GLFW_SAMPLES, 0);
+	// Keep the original pixel budget instead of multiplying GPU work on Retina displays.
+	glfwWindowHint(GLFW_SCALE_FRAMEBUFFER, GLFW_FALSE);
+	glfwWindowHint(GLFW_SRGB_CAPABLE, GLFW_FALSE);
+	glfwWindowHint(GLFW_DEPTH_BITS, 0);
+	glfwWindowHint(GLFW_STENCIL_BITS, 0);
+	glfwWindowHint(GLFW_ALPHA_BITS, 0);
+	gameWindow =
+	    glfwCreateWindow(width, height, "Reedmere - The First Uncharted Step", nullptr, nullptr);
+	if (!gameWindow)
+	{
+		glfwTerminate();
+		return 1;
+	}
+	glfwMakeContextCurrent(gameWindow);
+	glfwSwapInterval(1);
+	glewExperimental = GL_TRUE;
 	if (glewInit() != GLEW_OK || !GLEW_VERSION_3_3)
 	{
-		MessageBoxW(nullptr, L"OpenGL 3.3 지원이 필요합니다.", L"렌더러 초기화 실패", MB_OK);
+		std::cerr << "OpenGL 3.3 is required.\n";
+		glfwDestroyWindow(gameWindow);
+		gameWindow = nullptr;
+		glfwTerminate();
 		return 1;
 	}
-
-	// Synchronize presentation where supported instead of competing with a 16 ms timer.
-	using SwapIntervalProc = BOOL(WINAPI*)(int);
-	auto swapInterval = reinterpret_cast<SwapIntervalProc>(wglGetProcAddress("wglSwapIntervalEXT"));
-	if (swapInterval)
-		swapInterval(1);
+	// Some drivers expose a benign core-profile error during loader initialization.
+	glGetError();
+	glfwSetWindowSizeLimits(gameWindow, 1100, 700, GLFW_DONT_CARE, GLFW_DONT_CARE);
+	glfwSetFramebufferSizeCallback(gameWindow,
+	                               [](GLFWwindow*, int w, int h)
+	                               {
+		                               Resize(w, h);
+	                               });
+	glfwSetKeyCallback(gameWindow, WindowKey);
+	glfwSetWindowFocusCallback(gameWindow, FocusChanged);
+	glfwGetFramebufferSize(gameWindow, &width, &height);
 
 	renderer = new Renderer(width, height);
-
 	if (!renderer->IsInitialized())
 	{
-		MessageBoxW(nullptr,
-		            L"셰이더 또는 글꼴 초기화에 실패했습니다. 콘솔을 확인하세요.",
-		            L"초기화 실패",
-		            MB_OK);
+		std::cerr << "Shader or font initialization failed. Check Shaders/ and Fonts/.\n";
 		Close();
+		glfwDestroyWindow(gameWindow);
+		gameWindow = nullptr;
+		glfwTerminate();
 		return 1;
 	}
-
 	BuildTutorialForest();
 	BuildTutorialScene();
 	Reset();
 	monitorServer.Start();
 	PublishMonitorState();
 	lastFrame = FrameClock::now();
-	glutDisplayFunc(RenderScene);
-	glutReshapeFunc(Resize);
-	glutKeyboardFunc(KeyDown);
-	glutKeyboardUpFunc(KeyUp);
-	glutSpecialFunc(SpecialKeyDown);
-	glutIgnoreKeyRepeat(1);
-	glutCloseFunc(Close);
-	glutIdleFunc(RequestFrame);
-	glutMainLoop();
+	while (!glfwWindowShouldClose(gameWindow))
+	{
+		glfwPollEvents();
+		int framebufferWidth = 0, framebufferHeight = 0;
+		glfwGetFramebufferSize(gameWindow, &framebufferWidth, &framebufferHeight);
+		if (framebufferWidth == 0 || framebufferHeight == 0)
+		{
+			glfwWaitEventsTimeout(.05);
+			lastFrame = FrameClock::now();
+			continue;
+		}
+		RenderScene();
+	}
+	// Destroy GPU resources while the GLFW context is still current.
+	Close();
+	glfwDestroyWindow(gameWindow);
+	gameWindow = nullptr;
+	glfwTerminate();
 	return 0;
 }

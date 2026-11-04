@@ -1,7 +1,20 @@
 #include "stdafx.h"
+#include "PlatformPaths.h"
+#ifdef _WIN32
 #include <winsock2.h>
 #include <Windows.h>
 #include <shellapi.h>
+#else
+#include <cerrno>
+#include <fcntl.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <sys/select.h>
+#include <sys/wait.h>
+#include <spawn.h>
+#include <unistd.h>
+extern char** environ;
+#endif
 #include "MonitorServer.h"
 #include <chrono>
 #include <fstream>
@@ -9,27 +22,75 @@
 
 namespace
 {
+
+#ifdef _WIN32
+	using Socket = SOCKET;
+	constexpr Socket InvalidSocket = INVALID_SOCKET;
+	constexpr int SocketError = SOCKET_ERROR;
+
+	void CloseSocket(Socket socket)
+	{
+		closesocket(socket);
+	}
+
+	int LastSocketError()
+	{
+		return WSAGetLastError();
+	}
+
+	bool WouldBlock()
+	{
+		return WSAGetLastError() == WSAEWOULDBLOCK;
+	}
+
+	bool Nonblocking(Socket socket)
+	{
+		u_long enabled = 1;
+		return ioctlsocket(socket, FIONBIO, &enabled) != SocketError;
+	}
+#else
+	using Socket = int;
+	constexpr Socket InvalidSocket = -1;
+	constexpr int SocketError = -1;
+
+	void CloseSocket(Socket socket)
+	{
+		close(socket);
+	}
+
+	int LastSocketError()
+	{
+		return errno;
+	}
+
+	bool WouldBlock()
+	{
+		return errno == EAGAIN || errno == EWOULDBLOCK;
+	}
+
+	bool Nonblocking(Socket socket)
+	{
+		int flags = fcntl(socket, F_GETFL, 0);
+		return flags >= 0 && fcntl(socket, F_SETFL, flags | O_NONBLOCK) == 0;
+	}
+#endif
+
 	constexpr unsigned short Port = 8765;
 	const wchar_t* Url = L"http://127.0.0.1:8765/";
 	const char* Routes[] = {"/", "/monitor.css", "/monitor.js"};
 	const char* ContentTypes[] = {"text/html", "text/css", "application/javascript"};
-	const wchar_t* AssetNames[] = {L"index.html", L"monitor.css", L"monitor.js"};
+	const char* AssetNames[] = {"index.html", "monitor.css", "monitor.js"};
 
 	bool LoadAssets(std::array<std::string, 3>& assets)
 	{
-		wchar_t executable[MAX_PATH];
-		DWORD length = GetModuleFileNameW(nullptr, executable, MAX_PATH);
-		if (!length || length >= MAX_PATH)
-			return false;
-		std::wstring path(executable, length);
-		std::wstring directory = path.substr(0, path.find_last_of(L"\\/")) + L"\\Monitor\\";
-		for (const auto& root :
-		     {directory, std::wstring(L"Monitor\\"), std::wstring(L"SimpleGame\\Monitor\\")})
+		for (const auto& root : {ExecutableDirectory() / "Monitor",
+		                         std::filesystem::path("Monitor"),
+		                         std::filesystem::path("SimpleGame/Monitor")})
 		{
 			bool complete = true;
 			for (size_t i = 0; i < assets.size(); ++i)
 			{
-				std::ifstream file((root + AssetNames[i]).c_str(), std::ios::binary);
+				std::ifstream file(root / AssetNames[i], std::ios::binary);
 				if (!file)
 				{
 					complete = false;
@@ -43,14 +104,20 @@ namespace
 		return false;
 	}
 
-	int Ready(SOCKET socket, bool writing)
+	int Ready(std::uintptr_t handle, bool writing)
 	{
+		Socket socket = static_cast<Socket>(handle);
 		fd_set sockets;
 		FD_ZERO(&sockets);
 		FD_SET(socket, &sockets);
 		timeval timeout = {0, 100000};
+#ifdef _WIN32
+		int count = 0;
+#else
+		int count = socket + 1;
+#endif
 		return select(
-		    0, writing ? nullptr : &sockets, writing ? &sockets : nullptr, nullptr, &timeout);
+		    count, writing ? nullptr : &sockets, writing ? &sockets : nullptr, nullptr, &timeout);
 	}
 }
 
@@ -70,6 +137,7 @@ bool MonitorServer::Start()
 		return false;
 	}
 
+#ifdef _WIN32
 	WSADATA data;
 	int error = WSAStartup(MAKEWORD(2, 2), &data);
 	if (error)
@@ -77,34 +145,40 @@ bool MonitorServer::Start()
 		printf("Monitor: WSAStartup failed (%d).\n", error);
 		return false;
 	}
+#endif
 	m_Listener = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-	if (m_Listener == INVALID_SOCKET)
+	if (static_cast<Socket>(m_Listener) == InvalidSocket)
 	{
-		printf("Monitor: socket failed (%d).\n", WSAGetLastError());
+		printf("Monitor: socket failed (%d).\n", LastSocketError());
+#ifdef _WIN32
 		WSACleanup();
+#endif
 		return false;
 	}
+#ifdef _WIN32
 	BOOL exclusive = TRUE;
 	setsockopt(m_Listener,
 	           SOL_SOCKET,
 	           SO_EXCLUSIVEADDRUSE,
 	           reinterpret_cast<const char*>(&exclusive),
 	           sizeof(exclusive));
+#endif
 	sockaddr_in address = {};
 	address.sin_family = AF_INET;
 	address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
 	address.sin_port = htons(Port);
-	if (bind(m_Listener, reinterpret_cast<sockaddr*>(&address), sizeof(address)) == SOCKET_ERROR ||
-	    listen(m_Listener, 8) == SOCKET_ERROR)
+	if (bind(static_cast<Socket>(m_Listener),
+	         reinterpret_cast<sockaddr*>(&address),
+	         sizeof(address)) == SocketError ||
+	    listen(static_cast<Socket>(m_Listener), 8) == SocketError)
 	{
 		printf("Monitor: cannot listen on 127.0.0.1:%u (%d). Game continues without monitor.\n",
 		       Port,
-		       WSAGetLastError());
+		       LastSocketError());
 		Stop();
 		return false;
 	}
-	u_long nonblocking = 1;
-	if (ioctlsocket(m_Listener, FIONBIO, &nonblocking) == SOCKET_ERROR)
+	if (!Nonblocking(static_cast<Socket>(m_Listener)))
 	{
 		Stop();
 		return false;
@@ -120,11 +194,13 @@ void MonitorServer::Stop()
 	m_Running = false;
 	if (m_Thread.joinable())
 		m_Thread.join();
-	if (m_Listener != INVALID_SOCKET)
+	if (static_cast<Socket>(m_Listener) != InvalidSocket)
 	{
-		closesocket(m_Listener);
-		m_Listener = INVALID_SOCKET;
+		CloseSocket(static_cast<Socket>(m_Listener));
+		m_Listener = static_cast<std::uintptr_t>(-1);
+#ifdef _WIN32
 		WSACleanup();
+#endif
 	}
 }
 
@@ -136,8 +212,27 @@ void MonitorServer::Publish(std::string json)
 
 void MonitorServer::OpenBrowser() const
 {
-	if (m_Running)
-		ShellExecuteW(nullptr, L"open", Url, nullptr, nullptr, SW_SHOWNORMAL);
+	if (!m_Running)
+		return;
+#ifdef _WIN32
+	ShellExecuteW(nullptr, L"open", Url, nullptr, nullptr, SW_SHOWNORMAL);
+#else
+#ifdef __APPLE__
+	const char* command = "open";
+#else
+	const char* command = "xdg-open";
+#endif
+	char* arguments[] = {
+	    const_cast<char*>(command), const_cast<char*>("http://127.0.0.1:8765/"), nullptr};
+	pid_t process;
+	if (posix_spawnp(&process, command, nullptr, nullptr, arguments, environ) == 0)
+		std::thread(
+		    [process]()
+		    {
+			    waitpid(process, nullptr, 0);
+		    })
+		    .detach();
+#endif
 }
 
 void MonitorServer::Serve()
@@ -145,26 +240,32 @@ void MonitorServer::Serve()
 	while (m_Running)
 	{
 		int ready = Ready(m_Listener, false);
-		if (ready == SOCKET_ERROR)
+		if (ready == SocketError)
 		{
-			printf("Monitor: listener failed (%d).\n", WSAGetLastError());
+			printf("Monitor: listener failed (%d).\n", LastSocketError());
 			m_Running = false;
 			return;
 		}
 		if (!ready)
 			continue;
-		SOCKET client = accept(m_Listener, nullptr, nullptr);
-		if (client == INVALID_SOCKET)
+		Socket client = accept(static_cast<Socket>(m_Listener), nullptr, nullptr);
+		if (client == InvalidSocket)
 			continue;
-		u_long nonblocking = 1;
-		if (ioctlsocket(client, FIONBIO, &nonblocking) != SOCKET_ERROR)
+		if (Nonblocking(client))
+		{
+#ifdef SO_NOSIGPIPE
+			int enabled = 1;
+			setsockopt(client, SOL_SOCKET, SO_NOSIGPIPE, &enabled, sizeof(enabled));
+#endif
 			Respond(client);
-		closesocket(client);
+		}
+		CloseSocket(client);
 	}
 }
 
 void MonitorServer::Respond(std::uintptr_t client)
 {
+	Socket socket = static_cast<Socket>(client);
 	using Clock = std::chrono::steady_clock;
 	auto deadline = Clock::now() + std::chrono::seconds(1);
 	std::string request;
@@ -173,12 +274,12 @@ void MonitorServer::Respond(std::uintptr_t client)
 	       request.find("\r\n\r\n") == std::string::npos)
 	{
 		int ready = Ready(client, false);
-		if (ready == SOCKET_ERROR)
+		if (ready == SocketError)
 			return;
 		if (!ready)
 			continue;
-		int received = recv(client, buffer, sizeof(buffer), 0);
-		if (received == SOCKET_ERROR && WSAGetLastError() == WSAEWOULDBLOCK)
+		int received = static_cast<int>(recv(socket, buffer, sizeof(buffer), 0));
+		if (received == SocketError && WouldBlock())
 			continue;
 		if (received <= 0)
 			return;
@@ -228,13 +329,20 @@ void MonitorServer::Respond(std::uintptr_t client)
 	while (m_Running && sent < response.size() && Clock::now() < deadline)
 	{
 		int ready = Ready(client, true);
-		if (ready == SOCKET_ERROR)
+		if (ready == SocketError)
 			return;
 		if (!ready)
 			continue;
-		int count =
-		    send(client, response.data() + sent, static_cast<int>(response.size() - sent), 0);
-		if (count == SOCKET_ERROR && WSAGetLastError() == WSAEWOULDBLOCK)
+		int count = static_cast<int>(send(socket,
+		                                  response.data() + sent,
+		                                  static_cast<int>(response.size() - sent),
+#ifdef MSG_NOSIGNAL
+		                                  MSG_NOSIGNAL
+#else
+		                                  0
+#endif
+		                                  ));
+		if (count == SocketError && WouldBlock())
 			continue;
 		if (count <= 0)
 			return;

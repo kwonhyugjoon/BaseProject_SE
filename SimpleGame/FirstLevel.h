@@ -1,5 +1,6 @@
 #pragma once
 #include "LevelModels.h"
+#include "GameInput.h"
 #include "SceneGraph.h"
 #include "WorldTravel.h"
 #include <array>

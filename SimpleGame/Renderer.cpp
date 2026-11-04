@@ -1,7 +1,8 @@
 #include "stdafx.h"
 #include "Renderer.h"
 #include "CharacterSprites.h"
-#include <windows.h>
+#include "PlatformPaths.h"
+#include <algorithm>
 #include <cmath>
 #include <fstream>
 #include <sstream>
@@ -28,13 +29,8 @@ namespace
 
 	std::string ReadShader(const char* filename)
 	{
-		char executable[MAX_PATH] = {};
-		GetModuleFileNameA(nullptr, executable, MAX_PATH);
-		std::string folder(executable);
-		folder = folder.substr(0, folder.find_last_of("\\/") + 1);
-		const std::string paths[] = {std::string("Shaders/") + filename,
-		                             std::string("SimpleGame/Shaders/") + filename,
-		                             folder + "Shaders/" + filename};
+		const std::filesystem::path paths[] = {
+		    ResourcePath((std::string("Shaders/") + filename).c_str())};
 
 		for (const auto& path : paths)
 		{
@@ -122,6 +118,7 @@ Renderer::Renderer(int width, int height) : m_Width(width), m_Height(height)
 	m_Origin = glGetUniformLocation(m_Program, "u_Origin");
 	glUseProgram(m_Program);
 	glUniform1i(glGetUniformLocation(m_Program, "u_Atlas"), 1);
+	glUniform1i(glGetUniformLocation(m_Program, "u_Font"), 2);
 	m_PostScene = glGetUniformLocation(m_Post, "u_Scene");
 	m_PostTexel = glGetUniformLocation(m_Post, "u_Texel");
 	m_PostEnabled = glGetUniformLocation(m_Post, "u_Enabled");
@@ -158,30 +155,36 @@ Renderer::Renderer(int width, int height) : m_Width(width), m_Height(height)
 	glGenFramebuffers(1, &m_Framebuffer);
 	glGenTextures(1, &m_Scene);
 	ResizeTargets();
-	m_Font = CreateFontW(-18,
-	                     0,
-	                     0,
-	                     0,
-	                     FW_MEDIUM,
-	                     FALSE,
-	                     FALSE,
-	                     FALSE,
-	                     DEFAULT_CHARSET,
-	                     OUT_DEFAULT_PRECIS,
-	                     CLIP_DEFAULT_PRECIS,
-	                     ANTIALIASED_QUALITY,
-	                     DEFAULT_PITCH,
-	                     L"Malgun Gothic");
-	m_Initialized = m_Font != nullptr;
+	if (!m_Font.Initialize())
+	{
+		std::cerr << "Cannot initialize the UI font. Check Fonts/NanumGothic-Regular.ttf.\n";
+		return;
+	}
+	glGenTextures(1, &m_FontAtlas);
+	glActiveTexture(GL_TEXTURE2);
+	glBindTexture(GL_TEXTURE_2D, m_FontAtlas);
+	std::vector<unsigned char> empty(FontAtlasSize * FontAtlasSize, 0);
+	glTexImage2D(GL_TEXTURE_2D,
+	             0,
+	             GL_R8,
+	             FontAtlasSize,
+	             FontAtlasSize,
+	             0,
+	             GL_RED,
+	             GL_UNSIGNED_BYTE,
+	             empty.data());
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	glActiveTexture(GL_TEXTURE0);
+	GetGlyph('?');
+	m_Initialized = true;
 }
 
 Renderer::~Renderer()
 {
-	for (const auto& glyph : m_Glyphs)
-		glDeleteLists(glyph.second, 1);
-
-	if (m_Font)
-		DeleteObject((HFONT)m_Font);
+	glDeleteTextures(1, &m_FontAtlas);
 	glDeleteBuffers(1, &m_Buffer);
 	glDeleteVertexArrays(1, &m_Array);
 	glDeleteProgram(m_Program);
@@ -362,6 +365,8 @@ void Renderer::Flush()
 	glUniform2f(m_Origin, m_WorldOrigin.x, m_WorldOrigin.y);
 	glActiveTexture(GL_TEXTURE1);
 	glBindTexture(GL_TEXTURE_2D, m_Atlas);
+	glActiveTexture(GL_TEXTURE2);
+	glBindTexture(GL_TEXTURE_2D, m_FontAtlas);
 	glActiveTexture(GL_TEXTURE0);
 	glBindVertexArray(m_Array);
 	glBindBuffer(GL_ARRAY_BUFFER, m_Buffer);
@@ -392,47 +397,84 @@ void Renderer::FinishWorld(bool postprocess)
 	glEnable(GL_BLEND);
 }
 
+const Renderer::Glyph& Renderer::GetGlyph(uint32_t codepoint)
+{
+	auto found = m_Glyphs.find(codepoint);
+	if (found != m_Glyphs.end())
+		return found->second;
+	auto bitmap = m_Font.Rasterize(codepoint);
+	Glyph glyph = {bitmap.width, bitmap.height, bitmap.left, bitmap.top, bitmap.advance, 0, 0};
+	if (glyph.width && glyph.height)
+	{
+		if (m_FontX + glyph.width + 1 >= FontAtlasSize)
+		{
+			m_FontX = 1;
+			m_FontY += m_FontRowHeight + 1;
+			m_FontRowHeight = 0;
+		}
+		if (m_FontY + glyph.height + 1 >= FontAtlasSize)
+			return m_Glyphs.emplace(codepoint, GetGlyph('?')).first->second;
+		glyph.x = m_FontX;
+		glyph.y = m_FontY;
+		glActiveTexture(GL_TEXTURE2);
+		glBindTexture(GL_TEXTURE_2D, m_FontAtlas);
+		glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+		glTexSubImage2D(GL_TEXTURE_2D,
+		                0,
+		                glyph.x,
+		                glyph.y,
+		                glyph.width,
+		                glyph.height,
+		                GL_RED,
+		                GL_UNSIGNED_BYTE,
+		                bitmap.pixels.data());
+		glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+		glActiveTexture(GL_TEXTURE0);
+		m_FontX += glyph.width + 1;
+		m_FontRowHeight = std::max(m_FontRowHeight, glyph.height);
+	}
+	return m_Glyphs.emplace(codepoint, glyph).first->second;
+}
+
 void Renderer::Text(float x, float y, const std::wstring& text, Color c)
 {
 	x += m_DrawOffset.x;
 	y += m_DrawOffset.y;
-	// Windows bitmap glyphs support Korean without an external font asset.
-	// Bitmap display lists require the compatibility context requested at startup.
-	Flush();
-	glUseProgram(0);
-	glMatrixMode(GL_PROJECTION);
-	glLoadIdentity();
-	glOrtho(0, m_Width, m_Height, 0, -1, 1);
-	glMatrixMode(GL_MODELVIEW);
-	glLoadIdentity();
-	glColor4f(c.r, c.g, c.b, c.a);
-	glRasterPos2f(x, y + 18);
-	HDC dc = wglGetCurrentDC();
-	HGDIOBJ previous = SelectObject(dc, (HFONT)m_Font);
-	m_TextLists.clear();
-
-	for (wchar_t ch : text)
+	float start = x;
+	for (size_t i = 0; i < text.size(); ++i)
 	{
-		auto it = m_Glyphs.find(ch);
-
-		if (it == m_Glyphs.end())
+		uint32_t codepoint = static_cast<uint32_t>(text[i]);
+		if (sizeof(wchar_t) == 2 && codepoint >= 0xd800 && codepoint <= 0xdbff &&
+		    i + 1 < text.size() && text[i + 1] >= 0xdc00 && text[i + 1] <= 0xdfff)
+			codepoint = 0x10000 + ((codepoint - 0xd800) << 10) + (text[++i] - 0xdc00);
+		if (codepoint == '\n')
 		{
-			GLuint list = glGenLists(1);
-
-			if (!list)
-				continue;
-
-			if (!wglUseFontBitmapsW(dc, ch, 1, list))
-			{
-				glDeleteLists(list, 1);
-				continue;
-			}
-			it = m_Glyphs.emplace(ch, list).first;
+			x = start;
+			y += 24;
+			continue;
 		}
-		m_TextLists.push_back(it->second);
+		const auto& glyph = GetGlyph(codepoint);
+		if (glyph.width && glyph.height)
+		{
+			float left = x + glyph.left, top = y + 18 + glyph.top;
+			float right = left + glyph.width, bottom = top + glyph.height;
+			float u0 = glyph.x / static_cast<float>(FontAtlasSize);
+			float v0 = glyph.y / static_cast<float>(FontAtlasSize);
+			float u1 = (glyph.x + glyph.width) / static_cast<float>(FontAtlasSize);
+			float v1 = (glyph.y + glyph.height) / static_cast<float>(FontAtlasSize);
+			const Point points[] = {{left, top}, {right, top}, {right, bottom}, {left, bottom}};
+			const Point uv[] = {{u0, v0}, {u1, v0}, {u1, v1}, {u0, v1}};
+			for (int index : {0, 1, 2, 0, 2, 3})
+				m_Vertices.push_back({points[index].x,
+				                      points[index].y,
+				                      c.r,
+				                      c.g,
+				                      c.b,
+				                      c.a,
+				                      static_cast<float>(Material::Font),
+				                      uv[index].x,
+				                      uv[index].y});
+		}
+		x += glyph.advance;
 	}
-	glListBase(0);
-	if (!m_TextLists.empty())
-		glCallLists(static_cast<GLsizei>(m_TextLists.size()), GL_UNSIGNED_INT, m_TextLists.data());
-	SelectObject(dc, previous);
 }

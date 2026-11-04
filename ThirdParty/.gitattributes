@@ -1,0 +1,4 @@
+# Preserve upstream source bytes and formatting.
+glfw/** -text whitespace=-blank-at-eol,-blank-at-eof,-space-before-tab
+glew/** -text whitespace=-blank-at-eol,-blank-at-eof,-space-before-tab
+stb/** -text whitespace=-blank-at-eol,-blank-at-eof,-space-before-tab

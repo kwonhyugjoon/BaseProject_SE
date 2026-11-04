@@ -1,6 +1,5 @@
 #include "stdafx.h"
 #include "MonitorState.h"
-#include <Windows.h>
 #include <iomanip>
 #include <locale>
 #include <sstream>
@@ -34,12 +33,35 @@ namespace
 
 std::string MonitorUtf8(const wchar_t* text)
 {
-	int size = WideCharToMultiByte(CP_UTF8, 0, text, -1, nullptr, 0, nullptr, nullptr);
-	if (size <= 1)
-		return {};
-	std::string result(size, '\0');
-	WideCharToMultiByte(CP_UTF8, 0, text, -1, &result[0], size, nullptr, nullptr);
-	result.pop_back();
+	std::string result;
+	while (*text)
+	{
+		uint32_t code = static_cast<uint32_t>(*text++);
+		if (sizeof(wchar_t) == 2 && code >= 0xd800 && code <= 0xdbff && *text >= 0xdc00 &&
+		    *text <= 0xdfff)
+			code = 0x10000 + ((code - 0xd800) << 10) + (*text++ - 0xdc00);
+		if (code > 0x10ffff || (code >= 0xd800 && code <= 0xdfff))
+			code = 0xfffd;
+		if (code < 0x80)
+			result += static_cast<char>(code);
+		else
+		{
+			if (code < 0x800)
+				result += static_cast<char>(0xc0 | (code >> 6));
+			else
+			{
+				if (code < 0x10000)
+					result += static_cast<char>(0xe0 | (code >> 12));
+				else
+				{
+					result += static_cast<char>(0xf0 | (code >> 18));
+					result += static_cast<char>(0x80 | ((code >> 12) & 63));
+				}
+				result += static_cast<char>(0x80 | ((code >> 6) & 63));
+			}
+			result += static_cast<char>(0x80 | (code & 63));
+		}
+	}
 	return result;
 }
 

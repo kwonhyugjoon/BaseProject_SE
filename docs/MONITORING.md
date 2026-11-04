@@ -65,11 +65,9 @@ NPC 상태: `standing`, `idle`, `walking`, `returning`, `talking`, `watching_pla
 통신 독립 테스트는 게임이나 OpenGL 창을 열지 않는다. Visual Studio의 x64 개발자 명령 프롬프트에서 저장소 루트 기준으로 실행할 수 있다. 테스트 전 실행 중인 게임의 모니터 서버를 종료한다.
 
 ```bat
-set "MONITOR_TEST_REPO=%CD%"
-pushd "%TEMP%"
-cl /nologo /EHsc /std:c++14 /utf-8 /DNOMINMAX "%MONITOR_TEST_REPO%\tests\MonitorServerTestHost.cpp" "%MONITOR_TEST_REPO%\SimpleGame\MonitorState.cpp" "%MONITOR_TEST_REPO%\SimpleGame\MonitorServer.cpp" /Fe:MonitorServerTestHost.exe /link ws2_32.lib shell32.lib
-if not errorlevel 1 python "%MONITOR_TEST_REPO%\tests\MonitorProtocolTests.py" "%TEMP%\MonitorServerTestHost.exe"
-popd
+cmake --preset vs2022-x64
+cmake --build --preset release-x64 --target MonitorServerTestHost
+python tests/MonitorProtocolTests.py out/build/vs2022-x64/bin/Release/MonitorServerTestHost.exe
 ```
 
 프로토콜 테스트는 한국어·따옴표·역슬래시·제어 문자·이모지의 JSON 변환, 소수점 로캘, 실제 수신 바이트 길이, 자원 주소, 집계, 일시정지, 503 복구, 분할 수신, 8KB 초과 헤더 거부, 응답하지 않는 연결의 시간 제한, 종료 처리를 확인한다. 기존 주민·첫 레벨 독립 테스트에도 모니터 집계와 지역·일시정지 상태 검사를 추가했다.
