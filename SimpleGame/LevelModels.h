@@ -18,6 +18,13 @@ enum class LevelModel
 	TrailLoot,
 	OreLoot,
 	PartsLoot,
+	ScaleLizard,
+	WindSprite,
+	Emberling,
+	Dragon,
+	ScaleLoot,
+	WindLoot,
+	EmberLoot,
 	Count
 };
 

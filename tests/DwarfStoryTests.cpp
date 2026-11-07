@@ -15,6 +15,7 @@
 #include "../SimpleGame/FirstLevel.h"
 #undef private
 #include "../SimpleGame/FirstLevel.cpp"
+#include "../SimpleGame/FirstLevelDragon.cpp"
 #include <cassert>
 #include <cstdio>
 #include <set>
@@ -111,7 +112,7 @@ int main()
 		assert(level.m_Experience == xp + 75 && !journal.ChooseDwarf(3 - choice));
 		assert(journal.CanTravel(Region::Basin, Region::DwarfMine) == (choice == 1));
 		assert(journal.CanTravel(Region::DwarfMine, Region::Basin) == (choice == 1));
-		assert(journal.NextDestination() == Region::None);
+		assert(journal.NextDestination() == Region::Highlands);
 		auto clues = journal.Lines(1, Region::DwarfCity);
 		level.Begin(45, false, Region::DwarfMine, Region::DwarfCity);
 		assert(journal.Lines(1, Region::DwarfMine) == clues && level.m_Hp == 37);
@@ -128,7 +129,7 @@ int main()
 		MonitorSnapshot snapshot;
 		snapshot.scene = "dwarf_city";
 		level.CaptureMonitorState(snapshot);
-		assert(snapshot.npcs.size() == 3 && snapshot.villages.size() == 1);
+		assert(snapshot.npcs.size() == 5 && snapshot.villages.size() == 2);
 		assert(snapshot.npcs[1].x == 50 && snapshot.npcs[1].y == 43 && snapshot.npcs[1].visible);
 		assert(snapshot.villages[0].population == 3);
 		assert(snapshot.villages[0].mood ==
@@ -152,7 +153,7 @@ int main()
 	       beetleModel.size() != guardianModel.size());
 
 	std::vector<unsigned char> cachedData;
-	assert(LoadAssetCache(L"level-models-v2.mesh", 2, 4 * 1024 * 1024, cachedData));
+	assert(LoadAssetCache(L"level-models-v3.mesh", 3, 4 * 1024 * 1024, cachedData));
 	LevelModels reloaded;
 	reloaded.Load();
 	for (int i = 0; i < static_cast<int>(LevelModel::Count); ++i)

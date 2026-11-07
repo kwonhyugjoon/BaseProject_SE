@@ -56,7 +56,7 @@ void LevelModels::Load()
 	if (!m_Models[0].empty())
 		return;
 	std::vector<unsigned char> data;
-	bool valid = LoadAssetCache(L"level-models-v2.mesh", 2, 4 * 1024 * 1024, data);
+	bool valid = LoadAssetCache(L"level-models-v3.mesh", 3, 4 * 1024 * 1024, data);
 	size_t offset = 0;
 	for (auto& model : m_Models)
 	{
@@ -259,6 +259,79 @@ void LevelModels::Load()
 		         {side * 12.f - 4, -1}},
 		        {.57f, .62f, .59f, 1});
 
+	auto& lizard = m_Models[static_cast<size_t>(LevelModel::ScaleLizard)];
+	Polygon(lizard, {{-18, -18}, {-48, -8}, {-29, -5}, {3, -13}}, {.23f, .37f, .38f, 1});
+	Oval(lizard, 0, -19, 25, 13, {.29f, .46f, .48f, 1});
+	Polygon(lizard, {{14, -20}, {25, -34}, {40, -27}, {45, -17}, {20, -10}}, {.43f, .60f, .58f, 1});
+	for (int i = 0; i < 5; ++i)
+		Polygon(lizard,
+		        {{-20.f + i * 9, -24}, {-16.f + i * 9, -38}, {-10.f + i * 9, -24}},
+		        {.65f, .76f, .64f, 1});
+	for (int side : {-1, 1})
+		for (int leg : {-1, 1})
+			Oval(lizard, side * 15.f, -10.f + leg * 7, 9, 5, {.22f, .34f, .35f, 1});
+	Oval(lizard, 33, -25, 2, 2, {1.3f, .87f, .25f, 1});
+
+	auto& wind = m_Models[static_cast<size_t>(LevelModel::WindSprite)];
+	for (int i = 0; i < 4; ++i)
+		Polygon(wind,
+		        {{-30.f + i * 5, -12.f - i * 10},
+		         {15.f + i * 4, -18.f - i * 10},
+		         {31.f - i * 4, -27.f - i * 10},
+		         {-6.f, -20.f - i * 10}},
+		        {.49f + i * .08f, .76f + i * .05f, .82f + i * .04f, .85f});
+	Oval(wind, 1, -32, 9, 13, {.77f, 1.03f, 1.12f, 1});
+
+	auto& ember = m_Models[static_cast<size_t>(LevelModel::Emberling)];
+	Oval(ember, 0, -7, 21, 10, {.27f, .24f, .21f, 1}, Material::Stone);
+	Polygon(ember,
+	        {{-16, -9}, {-20, -31}, {0, -43}, {21, -28}, {14, -8}},
+	        {.39f, .29f, .23f, 1},
+	        Material::Stone);
+	Polygon(ember, {{-10, -28}, {0, -35}, {8, -25}, {0, -13}}, {1.6f, .52f, .13f, 1});
+	size_t emberFlame = ember.size();
+	Polygon(ember, {{-18, -12}, {18, -12}, {18, -64}, {-18, -64}}, {1, 1, 1, 1}, Material::Flame);
+	for (size_t i = emberFlame; i < ember.size(); ++i)
+	{
+		ember[i].u = ember[i].x / 18;
+		ember[i].v = (-12 - ember[i].y) / 52;
+	}
+
+	auto& dragon = m_Models[static_cast<size_t>(LevelModel::Dragon)];
+	for (int side : {-1, 1})
+	{
+		Polygon(dragon,
+		        {{side * 16.f, -60},
+		         {side * 76.f, -133},
+		         {side * 121.f, -50},
+		         {side * 70.f, -65},
+		         {side * 42.f, -28}},
+		        {.30f, .36f, .39f, 1});
+		Polygon(dragon,
+		        {{side * 22.f, -61}, {side * 76.f, -121}, {side * 106.f, -58}, {side * 67.f, -73}},
+		        {.48f, .46f, .40f, 1});
+		Oval(dragon, side * 28.f, -8, 21, 10, {.28f, .33f, .35f, 1});
+	}
+	Oval(dragon, 0, -39, 42, 35, {.35f, .42f, .43f, 1});
+	Polygon(dragon,
+	        {{-8, -47}, {9, -86}, {43, -103}, {64, -79}, {44, -58}, {20, -29}},
+	        {.47f, .53f, .51f, 1});
+	Polygon(dragon, {{32, -95}, {30, -125}, {45, -100}}, {.84f, .78f, .58f, 1});
+	Polygon(dragon, {{47, -94}, {59, -118}, {58, -83}}, {.73f, .69f, .53f, 1});
+	Oval(dragon, 46, -84, 4, 3, {1.5f, .94f, .32f, 1});
+	Polygon(
+	    dragon, {{-26, -23}, {-85, -2}, {-105, -20}, {-80, 9}, {-3, -7}}, {.28f, .36f, .37f, 1});
+
+	auto& scaleLoot = m_Models[static_cast<size_t>(LevelModel::ScaleLoot)];
+	Polygon(scaleLoot, {{-15, -5}, {-10, -23}, {5, -31}, {17, -12}, {5, 0}}, {.43f, .65f, .64f, 1});
+	Polygon(scaleLoot, {{-10, -23}, {5, -31}, {5, 0}}, {.72f, .84f, .73f, 1});
+	auto& windLoot = m_Models[static_cast<size_t>(LevelModel::WindLoot)];
+	Polygon(windLoot, {{-10, -9}, {0, -31}, {12, -12}, {0, 1}}, {.58f, .95f, 1.2f, 1});
+	Oval(windLoot, 0, -9, 16, 3, {.72f, .91f, .92f, .6f});
+	auto& emberLoot = m_Models[static_cast<size_t>(LevelModel::EmberLoot)];
+	Polygon(emberLoot, {{-13, -2}, {-9, -22}, {7, -25}, {15, -5}, {0, 2}}, {.39f, .25f, .17f, 1});
+	Polygon(emberLoot, {{-6, -13}, {2, -20}, {7, -8}, {0, -3}}, {1.5f, .55f, .13f, 1});
+
 	data.clear();
 	for (const auto& model : m_Models)
 	{
@@ -268,6 +341,6 @@ void LevelModels::Load()
 		std::memcpy(data.data() + start, &count, sizeof(count));
 		std::memcpy(data.data() + start + sizeof(count), model.data(), count * sizeof(ModelVertex));
 	}
-	SaveAssetCache(L"level-models-v2.mesh", 2, data);
+	SaveAssetCache(L"level-models-v3.mesh", 3, data);
 	std::cout << "Level models generated and cache save attempted.\n";
 }

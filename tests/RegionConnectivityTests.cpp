@@ -12,6 +12,7 @@
 #undef private
 // Compile implementation here so MSVC access-dependent symbols match this test.
 #include "../SimpleGame/FirstLevel.cpp"
+#include "../SimpleGame/FirstLevelDragon.cpp"
 #include <cassert>
 #include <cstdio>
 
@@ -28,7 +29,9 @@ int main()
 	                    Region::StoneRidge,
 	                    Region::MistShore,
 	                    Region::DwarfMine,
-	                    Region::DwarfCity})
+	                    Region::DwarfCity,
+	                    Region::Highlands,
+	                    Region::DragonRoost})
 		for (unsigned seed = 1; seed <= 32; ++seed)
 		{
 			level.Begin(seed, true, region);
@@ -60,9 +63,10 @@ int main()
 				++sectors[static_cast<int>(enemy.home.y) / 20 * 4 +
 				          static_cast<int>(enemy.home.x) / 24];
 			}
-			assert(level.m_Enemies.size() == (region == Region::DwarfCity ? 0 : 48));
+			bool peaceful = region == Region::DwarfCity || region == Region::DragonRoost;
+			assert(level.m_Enemies.size() == (peaceful ? 0 : 48));
 			for (int count : sectors)
-				assert(count == (region == Region::DwarfCity ? 0 : 3));
+				assert(count == (peaceful ? 0 : 3));
 		}
 	level.m_Experience = 90;
 	level.m_Level = 3;
@@ -72,7 +76,8 @@ int main()
 	assert(level.m_Hp == 37 && level.m_Experience == 90 && level.m_Shards == 4);
 	assert(level.Key('e') && level.RequestedExit() == FirstLevel::Exit::Basin);
 	bool input[256] = {};
-	for (auto region : {Region::Passage, Region::Basin, Region::EchoHall})
+	for (auto region :
+	     {Region::Passage, Region::Basin, Region::EchoHall, Region::Highlands, Region::DragonRoost})
 	{
 		level.Begin(42, false, region);
 		// No movement is applied: check all four boundary cases and preserved state.
@@ -102,5 +107,5 @@ int main()
 	level.Key('r');
 	assert(level.CurrentRegion() == Region::Basin && level.m_Experience == 0);
 	puts(
-	    "PASS: 224 maps, variable reciprocal exits, 48 enemies/16 sectors or peaceful city, state and edge returns.");
+	    "PASS: 288 maps, reciprocal exits, 48 enemies/16 sectors or peaceful areas, state and edge returns.");
 }

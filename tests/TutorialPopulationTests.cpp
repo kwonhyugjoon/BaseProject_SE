@@ -11,7 +11,7 @@ int main()
 	BuildTutorialScene();
 	Reset();
 	MonitorSnapshot snapshot = CaptureMonitorState();
-	assert(snapshot.npcs.size() == 41 && snapshot.villages.size() == 2);
+	assert(snapshot.npcs.size() == 43 && snapshot.villages.size() == 3);
 	assert(snapshot.villages[0].population == 38 && snapshot.villages[0].mood.empty());
 	assert(snapshot.villages[1].population == 3 && snapshot.npcs[38].state == "inactive_area");
 	assert(!snapshot.huntingLoaded && snapshot.npcs[0].state == "waiting");

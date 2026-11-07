@@ -27,6 +27,17 @@ class QuestJournal
 		Complete
 	};
 
+	enum class DragonStage
+	{
+		Meeting,
+		Trace,
+		Audience,
+		Choice,
+		Trial,
+		Memory,
+		Complete
+	};
+
 	QuestJournal();
 	void Reset();
 	bool CompleteStep(Stage expected);
@@ -42,6 +53,15 @@ class QuestJournal
 	bool ChooseDwarf(int value);
 	DwarfStage DwarfProgress() const;
 	int DwarfChoice() const;
+	bool StartDragonStory();
+	bool ReadDragonTrace();
+	bool HearDragon();
+	bool ChooseDragon(int value);
+	bool CompleteDragonTrial();
+	bool ReadDragonMemory();
+	DragonStage DragonProgress() const;
+	int DragonApproach() const;
+	int DragonChoice() const;
 	bool CanTravel(WorldTravel::Region from, WorldTravel::Region to) const;
 	const Stage& TutorialStage() const;
 	const int& LakeChoice() const;
@@ -61,6 +81,8 @@ class QuestJournal
 	int m_LakeChoice = 0;
 	DwarfStage m_DwarfStage = DwarfStage::Meeting;
 	int m_DwarfChoice = 0;
+	DragonStage m_DragonStage = DragonStage::Meeting;
+	int m_DragonApproach = 0;
 	std::array<bool, RegionCount> m_Visited = {}, m_Investigated = {};
 	std::vector<std::pair<WorldTravel::Region, WorldTravel::Region>> m_Routes;
 	bool m_Open = false;

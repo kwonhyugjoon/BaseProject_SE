@@ -44,4 +44,4 @@ Linux는 X11 백엔드와 OpenGL 개발 패키지가 필요하다. Ubuntu/Debian
 - GlfwRenderTests: 화면에 보이지 않는 GLFW 창으로 렌더링·문자 출력·캐시를 검사한다. --core 인자로 Core 프로파일을 검사한다. 디스플레이와 OpenGL 드라이버가 필요한 검사라 일반 ctest에서는 자동 실행하지 않는다.
 - [GLFW 전환과 GPU 폰트 시스템](docs/GLFW_MIGRATION.md)
 - [게임 개발 기준](docs/GAME_DESIGN.md), [10회 개발 계획](docs/DEVELOPMENT_ROADMAP.md)
-- [지역 이동](docs/WORLD_TRAVEL.md), [드워프 이야기](docs/DWARF_STORY.md)
+- [지역 이동](docs/WORLD_TRAVEL.md), [드워프 이야기](docs/DWARF_STORY.md), [고원과 고룡 이야기](docs/DRAGON_STORY.md)

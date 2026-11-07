@@ -31,7 +31,7 @@ add_library(game_core STATIC
     SimpleGame/Actor.cpp SimpleGame/SceneGraph.cpp SimpleGame/AssetCache.cpp
     SimpleGame/LevelModels.cpp SimpleGame/CharacterSprites.cpp SimpleGame/Renderer.cpp
     SimpleGame/FontRasterizer.cpp SimpleGame/PlatformPaths.cpp
-    SimpleGame/FirstLevel.cpp SimpleGame/QuestJournal.cpp
+    SimpleGame/FirstLevel.cpp SimpleGame/FirstLevelDragon.cpp SimpleGame/QuestJournal.cpp
     SimpleGame/MonitorState.cpp SimpleGame/MonitorServer.cpp)
 target_include_directories(game_core PUBLIC SimpleGame)
 target_compile_definitions(game_core PUBLIC NOMINMAX)
@@ -58,7 +58,7 @@ game_assets(SimpleGame)
 include(CTest)
 if(BUILD_TESTING)
     foreach(name SprintTests QuestJournalTests WorldTravelTests RegionConnectivityTests
-                 LevelExpansionTests TutorialPopulationTests DwarfStoryTests
+                 LevelExpansionTests TutorialPopulationTests DwarfStoryTests DragonStoryTests
                  SceneGraphTests TreeCollisionGridTests FontTests GlfwInputTests)
         add_executable(${name} tests/${name}.cpp)
         target_link_libraries(${name} PRIVATE game_core)

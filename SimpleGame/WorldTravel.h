@@ -22,6 +22,8 @@ namespace WorldTravel
 		MistShore,
 		DwarfMine,
 		DwarfCity,
+		Highlands,
+		DragonRoost,
 		Count
 	};
 
@@ -39,16 +41,21 @@ namespace WorldTravel
 		    {{NearGate, Region::Village}, {FarGate, Region::Basin}},
 		    {{NearGate, Region::Passage},
 		     {FarGate, Region::EchoHall},
-		     {{73, 23}, Region::DwarfMine}},
+		     {{73, 23}, Region::DwarfMine},
+		     {{49, 57}, Region::Highlands}},
 		    {{NearGate, Region::Basin},
 		     {{73, 41}, Region::StoneRidge},
 		     {{49, 57}, Region::MistShore}},
-		    {{NearGate, Region::EchoHall}, {FarGate, Region::DwarfMine}},
+		    {{NearGate, Region::EchoHall},
+		     {FarGate, Region::DwarfMine},
+		     {{73, 23}, Region::DragonRoost}},
 		    {{NearGate, Region::EchoHall}},
 		    {{NearGate, Region::StoneRidge},
 		     {FarGate, Region::DwarfCity},
 		     {{73, 23}, Region::Basin}},
-		    {{NearGate, Region::DwarfMine}}};
+		    {{NearGate, Region::DwarfMine}},
+		    {{NearGate, Region::Basin}, {FarGate, Region::DragonRoost}},
+		    {{NearGate, Region::Highlands}, {FarGate, Region::StoneRidge}}};
 		return links[static_cast<int>(region)];
 	}
 
@@ -67,7 +74,9 @@ namespace WorldTravel
 		                                 L"돌등성이 전초지",
 		                                 L"안개 호숫가",
 		                                 L"깊은돌 폐광길",
-		                                 L"깊은돌 도시 앞마당"};
+		                                 L"깊은돌 도시 앞마당",
+		                                 L"바람등 고원",
+		                                 L"잿빛 날개 쉼터"};
 		return names[static_cast<int>(region)];
 	}
 
@@ -81,7 +90,9 @@ namespace WorldTravel
 		                             "stone_ridge",
 		                             "mist_shore",
 		                             "dwarf_mine",
-		                             "dwarf_city"};
+		                             "dwarf_city",
+		                             "highlands",
+		                             "dragon_roost"};
 		return keys[static_cast<int>(region)];
 	}
 

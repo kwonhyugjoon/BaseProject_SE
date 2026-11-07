@@ -35,7 +35,7 @@ struct MonitorSnapshot
 	bool paused = false, huntingLoaded = false;
 	std::vector<MonitorNpc> npcs;
 	std::vector<MonitorVillage> villages;
-	std::array<MonitorMobCount, 7> mobs;
+	std::array<MonitorMobCount, 10> mobs;
 };
 
 std::string MonitorUtf8(const wchar_t* text);

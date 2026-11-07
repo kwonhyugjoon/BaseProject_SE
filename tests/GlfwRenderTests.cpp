@@ -159,10 +159,20 @@ int main(int argc, char** argv)
 		glFinish();
 		assert(glGetError() == GL_NO_ERROR);
 		renderer = nullptr;
+		for (auto region : {WorldTravel::Region::Highlands, WorldTravel::Region::DragonRoost})
+		{
+			firstLevel.Begin(43, false, region);
+			firstLevel.Scene().World().Find("Player")->SetWorldPosition(WorldTravel::SurveyStone);
+			firstLevel.Update(.01f, keys);
+			firstLevel.Draw(r, width, height, true, false);
+			glFinish();
+			assert(glGetError() == GL_NO_ERROR);
+		}
 	}
 	assert(!glIsTexture(releasedFont) && !glIsBuffer(releasedBuffer));
 	glfwDestroyWindow(gameWindow);
 	gameWindow = nullptr;
 	glfwTerminate();
-	puts("PASS: hidden GLFW/OpenGL context, shaders, Korean text, village and dwarf city.");
+	puts(
+	    "PASS: hidden GLFW/OpenGL context, shaders, Korean text, village, dwarf city, highlands and dragon roost.");
 }

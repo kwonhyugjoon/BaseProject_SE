@@ -27,6 +27,8 @@ void QuestJournal::Reset()
 	m_LakeChoice = 0;
 	m_DwarfStage = DwarfStage::Meeting;
 	m_DwarfChoice = 0;
+	m_DragonStage = DragonStage::Meeting;
+	m_DragonApproach = 0;
 	m_Visited.fill(false);
 	m_Investigated.fill(false);
 	m_Routes.clear();
@@ -143,8 +145,78 @@ int QuestJournal::DwarfChoice() const
 	return m_DwarfChoice;
 }
 
+bool QuestJournal::StartDragonStory()
+{
+	if (m_Stage != Stage::Complete || !Visited(Region::Highlands) ||
+	    m_DragonStage != DragonStage::Meeting)
+		return false;
+	m_DragonStage = DragonStage::Trace;
+	return true;
+}
+
+bool QuestJournal::ReadDragonTrace()
+{
+	if (m_DragonStage != DragonStage::Trace || !Visited(Region::Highlands))
+		return false;
+	m_DragonStage = DragonStage::Audience;
+	return true;
+}
+
+bool QuestJournal::HearDragon()
+{
+	if (m_DragonStage != DragonStage::Audience || !Visited(Region::DragonRoost))
+		return false;
+	m_DragonStage = DragonStage::Choice;
+	return true;
+}
+
+bool QuestJournal::ChooseDragon(int value)
+{
+	if (m_DragonStage != DragonStage::Choice || value < 1 || value > 3)
+		return false;
+	m_DragonApproach = value;
+	m_DragonStage = value == 2 ? DragonStage::Trial : DragonStage::Memory;
+	return true;
+}
+
+bool QuestJournal::CompleteDragonTrial()
+{
+	if (m_DragonStage != DragonStage::Trial || !Visited(Region::DragonRoost))
+		return false;
+	m_DragonStage = DragonStage::Memory;
+	return true;
+}
+
+bool QuestJournal::ReadDragonMemory()
+{
+	if (m_DragonStage != DragonStage::Memory || !Visited(Region::DragonRoost))
+		return false;
+	m_DragonStage = DragonStage::Complete;
+	return true;
+}
+
+QuestJournal::DragonStage QuestJournal::DragonProgress() const
+{
+	return m_DragonStage;
+}
+
+int QuestJournal::DragonApproach() const
+{
+	return m_DragonApproach;
+}
+
+int QuestJournal::DragonChoice() const
+{
+	return m_DragonStage == DragonStage::Complete ? m_DragonApproach : 0;
+}
+
 bool QuestJournal::CanTravel(Region from, Region to) const
 {
+	if ((from == Region::StoneRidge && to == Region::DragonRoost) ||
+	    (from == Region::DragonRoost && to == Region::StoneRidge))
+		return DragonChoice() == 1 || DragonChoice() == 2;
+	if (from == Region::Highlands && to == Region::DragonRoost)
+		return m_DragonStage >= DragonStage::Audience;
 	if ((from == Region::Basin && to == Region::DwarfMine) ||
 	    (from == Region::DwarfMine && to == Region::Basin))
 		return m_DwarfChoice == 1;
@@ -167,6 +239,10 @@ Region QuestJournal::NextDestination() const
 {
 	if (m_Stage != Stage::Complete)
 		return Region::Village;
+	if (m_DragonStage == DragonStage::Trace)
+		return Region::Highlands;
+	if (m_DragonStage >= DragonStage::Audience && m_DragonStage < DragonStage::Complete)
+		return Region::DragonRoost;
 	if (m_DwarfStage == DwarfStage::Record)
 		return Region::DwarfMine;
 	if (m_DwarfStage == DwarfStage::Report || m_DwarfStage == DwarfStage::Choice)
@@ -174,13 +250,25 @@ Region QuestJournal::NextDestination() const
 	for (Region region : SurveyRegions)
 		if (!Investigated(region))
 			return region;
-	return m_DwarfStage == DwarfStage::Meeting ? Region::StoneRidge : Region::None;
+	if (m_DwarfStage == DwarfStage::Meeting)
+		return Region::StoneRidge;
+	return m_DragonStage == DragonStage::Meeting ? Region::Highlands : Region::None;
 }
 
 const wchar_t* QuestJournal::Objective() const
 {
 	if (m_Stage != Stage::Complete)
 		return TutorialObjectives[static_cast<int>(m_Stage)];
+	if (m_DragonStage == DragonStage::Trace)
+		return L"바람등 고원 중앙의 벗겨진 비늘과 옛 경계문 조사하기";
+	if (m_DragonStage == DragonStage::Audience)
+		return L"잿빛 날개 쉼터에서 고룡 아르켄과 대화하기";
+	if (m_DragonStage == DragonStage::Choice)
+		return L"고룡에게 협상·회피 시험·거리 두기 중 접근 방식 선택하기";
+	if (m_DragonStage == DragonStage::Trial)
+		return L"고룡 앞에서 E로 시험 시작 · 세 번의 바닥 예고를 피해 버티기";
+	if (m_DragonStage == DragonStage::Memory)
+		return L"고룡에게 E로 봉인 이전의 기억 듣기";
 	if (m_DwarfStage == DwarfStage::Record)
 		return L"깊은돌 폐광길의 작업 기록 조사하기";
 	if (m_DwarfStage == DwarfStage::Report)
@@ -197,8 +285,10 @@ const wchar_t* QuestJournal::Objective() const
 		return L"돌등성이 전초지의 드워프 표식 기록하기";
 	case Region::MistShore:
 		return L"안개 호숫가의 물결 표식 기록하기";
+	case Region::Highlands:
+		return L"바람등 고원의 길잡이 세라와 대화하기";
 	default:
-		return L"드워프 이야기와 이정표 기록 완료 · 다음 여행은 고원과 용의 흔적으로 이어집니다";
+		return L"드워프와 고룡의 기록 완료 · 다음 여행은 해안과 미지의 존재로 이어집니다";
 	}
 }
 
@@ -246,6 +336,8 @@ std::vector<std::wstring> QuestJournal::Lines(int tab, Region current) const
 		if (m_DwarfStage != DwarfStage::Meeting || Investigated(Region::StoneRidge))
 			lines.push_back(L"드워프 이야기 · 돌에 새긴 귀환 약속");
 		lines.push_back(Objective());
+		lines.push_back(
+		    L"고원은 분지 남쪽 길로 갈 수 있습니다. 드워프 이야기와 별개로 먼저 탐험해도 됩니다.");
 		auto route = RouteToNext(current);
 		if (route.size() == 1)
 			lines.push_back(L"이 지역에 목표가 있습니다. 가까이에서 E로 조사·대화하세요.");
@@ -300,6 +392,26 @@ std::vector<std::wstring> QuestJournal::Lines(int tab, Region current) const
 			    m_DwarfChoice == 1
 			        ? L"드워프 선택: 감시 아래 교역 재개. 솔바람 분지 ↔ 깊은돌 폐광길 지름길 개방. 도시는 여행자를 협력자로 맞이한다."
 			        : L"드워프 선택: 옛길 봉인 유지. 지름길은 닫히고 돌등성이 산길은 유지. 도시는 안전 점검과 기록 보존에 집중한다.");
+		if (m_DragonStage >= DragonStage::Trace)
+			lines.push_back(
+			    L"세라의 증언: 비늘은 싸움의 잔해가 아니라 탈피의 흔적이다. 고원 생물은 둥지와 열맥을 지킨다.");
+		if (m_DragonStage >= DragonStage::Audience)
+			lines.push_back(
+			    L"고원의 경계문: 돌아가는 이에게 표식을. 날개와 드워프 인장이 나란히 새겨져 있다. 봉인은 공동의 약속이었다.");
+		if (m_DragonStage == DragonStage::Trial)
+			lines.push_back(
+			    L"고룡의 시험: 힘보다 멈출 때를 배운다. 쉼터 안에서 세 번의 예고를 피하고 돌아와 기억을 듣는다. 중단하면 E로 재시도할 수 있다.");
+		if (DragonChoice())
+		{
+			const wchar_t* choices[] = {
+			    L"",
+			    L"협상 · 서식지를 지키기로 약속. 돌등성이 바람길 개방.",
+			    L"시험 · 세 번의 울림을 견뎌 경계 관찰자 인정. 돌등성이 바람길 개방.",
+			    L"거리 두기 · 고룡의 권한을 받아들이지 않음. 바람길은 닫히고 고원 길은 유지."};
+			lines.push_back(std::wstring(L"고룡 선택: ") + choices[DragonChoice()]);
+			lines.push_back(
+			    L"고룡의 기억: 봉인은 침입자를 가두는 벽이 아니라 서로의 응답을 늦추는 경계다. 통로를 열기 전에 양쪽의 뜻을 확인해야 한다.");
+		}
 	}
 	else
 	{

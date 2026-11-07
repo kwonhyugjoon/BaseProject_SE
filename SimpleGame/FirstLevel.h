@@ -32,12 +32,12 @@ class FirstLevel
 
 	bool CanOpenJournal() const
 	{
-		return !m_Map && !m_Stats && m_Dialogue.empty() && !m_ChoosingDwarf && m_Hp > 0;
+		return !m_Map && !m_Stats && !IsStoryOpen() && m_TrialWaves == 0 && m_Hp > 0;
 	}
 
 	bool IsStoryOpen() const
 	{
-		return !m_Dialogue.empty() || m_ChoosingDwarf;
+		return !m_Dialogue.empty() || m_ChoosingDwarf || m_ChoosingDragon;
 	}
 
 	Exit RequestedExit() const
@@ -74,6 +74,9 @@ class FirstLevel
 		Wolf,
 		Beetle,
 		Guardian,
+		ScaleLizard,
+		WindSprite,
+		Emberling,
 		Count
 	};
 
@@ -94,6 +97,7 @@ class FirstLevel
 		EnemyKind kind;
 		Point attackTarget = {0, 0};
 		float supportCooldown = 3, glow = 0, charge = 0;
+		float heat = 0;
 		Point chargeDirection = {};
 		int facing = 1;
 		bool moving = false;
@@ -118,7 +122,11 @@ class FirstLevel
 		None,
 		Start,
 		Record,
-		Council
+		Council,
+		DragonStart,
+		DragonTrace,
+		DragonAudience,
+		DragonMemory
 	};
 
 	QuestJournal& m_Journal;
@@ -139,10 +147,15 @@ class FirstLevel
 	Actor* m_SurveyStone = nullptr;
 	Actor* m_StoryContact = nullptr;
 	Actor* m_Smith = nullptr;
+	Actor* m_DragonTrace = nullptr;
 	std::vector<std::wstring> m_Dialogue;
 	size_t m_DialoguePage = 0;
 	StoryAction m_StoryAction = StoryAction::None;
 	bool m_ChoosingDwarf = false;
+	bool m_ChoosingDragon = false;
+	int m_TrialWaves = 0;
+	float m_TrialWindup = 0;
+	Point m_TrialTarget = {};
 	Region m_Region = Region::Passage;
 	Exit m_RequestedExit = Exit::None;
 	WorldTravel::ReturnTrail m_ReturnTrail;
@@ -150,7 +163,7 @@ class FirstLevel
 	LevelModels m_Models;
 	Point m_Camera = WorldTravel::NearGate, m_Aim = {1, 0};
 	int m_Level = 1, m_Experience = 0, m_Hp = 100, m_Coins = 0, m_Shards = 0;
-	std::array<int, 3> m_Materials = {};
+	std::array<int, 6> m_Materials = {};
 	int m_Facing = 1, m_Kills = 0, m_FlowTarget = -1;
 	uint32_t m_Seed = 1, m_Random = 1;
 	float m_Time = 0, m_AttackCooldown = 0, m_Swing = 0, m_HitCooldown = 0, m_MessageTime = 0;
@@ -178,6 +191,10 @@ class FirstLevel
 	void UpdateEnemy(Enemy& enemy, float dt);
 	void BuildScene();
 	void BuildDwarfScene();
+	void BuildDragonScene();
+	void InteractDragon();
+	void StartDragonTrial();
+	void UpdateDragonTrial(float dt);
 	void InteractStory();
 	void FinishStory();
 	Point StoryTarget() const;

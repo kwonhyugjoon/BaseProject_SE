@@ -41,16 +41,36 @@ const FirstLevel::EnemyStats& FirstLevel::Stats(EnemyKind kind)
 	    {32, 6, 26, 7, 1.5f, 7.f, 1.15f, 2.4f, {.56f, .3f, .70f, 1}},
 	    {28, 7, 20, 3, 2.6f, 4.f, .7f, 2.1f, {.44f, .47f, .42f, 1}},
 	    {38, 6, 24, 4, 1.35f, 1.5f, .85f, 1.8f, {.57f, .46f, .25f, 1}},
-	    {56, 10, 36, 6, 1.1f, 3.6f, 1.3f, 2.8f, {.46f, .52f, .50f, 1}}};
+	    {56, 10, 36, 6, 1.1f, 3.6f, 1.3f, 2.8f, {.46f, .52f, .50f, 1}},
+	    {46, 8, 30, 6, 1.8f, 5.f, 1.f, 2.6f, {.30f, .48f, .51f, 1}},
+	    {30, 6, 28, 5, 2.3f, 7.f, 1.1f, 2.5f, {.58f, .85f, .89f, 1}},
+	    {34, 8, 32, 6, 1.4f, 6.f, 1.4f, 4.5f, {.94f, .38f, .13f, 1}}};
 	return stats[static_cast<int>(kind)];
 }
 
 void FirstLevel::CaptureMonitorState(MonitorSnapshot& snapshot) const
 {
 	snapshot.huntingLoaded = m_Initialized;
-	const char* kinds[] = {"slime", "bandit", "archer", "priest", "wolf", "beetle", "guardian"};
-	const char* names[] = {
-	    "슬라임", "도적", "궁수", "타락한 사제", "숲 늑대", "광맥 갑충", "고장 난 석재 수호체"};
+	const char* kinds[] = {"slime",
+	                       "bandit",
+	                       "archer",
+	                       "priest",
+	                       "wolf",
+	                       "beetle",
+	                       "guardian",
+	                       "scale_lizard",
+	                       "wind_sprite",
+	                       "emberling"};
+	const char* names[] = {"슬라임",
+	                       "도적",
+	                       "궁수",
+	                       "타락한 사제",
+	                       "숲 늑대",
+	                       "광맥 갑충",
+	                       "고장 난 석재 수호체",
+	                       "능선 비늘도마뱀",
+	                       "바람 정령",
+	                       "열맥 불씨"};
 	for (size_t i = 0; i < snapshot.mobs.size(); ++i)
 	{
 		snapshot.mobs[i] = {};
@@ -65,11 +85,18 @@ void FirstLevel::CaptureMonitorState(MonitorSnapshot& snapshot) const
 			++count.alive;
 	}
 
-	const Region areas[] = {Region::StoneRidge, Region::DwarfCity, Region::DwarfCity};
-	const Point positions[] = {{55, 41}, WorldTravel::SurveyStone, {57, 43}};
-	const char* ids[] = {"Dwarf/Torvik", "Dwarf/Bryn", "Dwarf/Dorna"};
-	const char* labels[] = {"파수꾼 토르빅", "기록관 브린", "대장장이 도르나"};
-	for (int i = 0; i < 3; ++i)
+	const Region areas[] = {Region::StoneRidge,
+	                        Region::DwarfCity,
+	                        Region::DwarfCity,
+	                        Region::Highlands,
+	                        Region::DragonRoost};
+	const Point positions[] = {
+	    {55, 41}, WorldTravel::SurveyStone, {57, 43}, {55, 41}, WorldTravel::SurveyStone};
+	const char* ids[] = {
+	    "Dwarf/Torvik", "Dwarf/Bryn", "Dwarf/Dorna", "Highlands/Sera", "Dragon/Arken"};
+	const char* labels[] = {
+	    "파수꾼 토르빅", "기록관 브린", "대장장이 도르나", "길잡이 세라", "고룡 아르켄"};
+	for (int i = 0; i < 5; ++i)
 	{
 		bool active =
 		    m_Initialized && m_Region == areas[i] && snapshot.scene == WorldTravel::Key(areas[i]);
@@ -77,7 +104,7 @@ void FirstLevel::CaptureMonitorState(MonitorSnapshot& snapshot) const
 		MonitorNpc npc;
 		npc.id = ids[i];
 		npc.name = labels[i];
-		npc.villageId = "deepstone";
+		npc.villageId = i < 3 ? "deepstone" : "highlands";
 		npc.routine = i == 2 ? "대장간 안내" : "기록과 길 안내";
 		npc.state = !active ? "inactive_area"
 		            : IsStoryOpen() &&
@@ -109,6 +136,23 @@ void FirstLevel::CaptureMonitorState(MonitorSnapshot& snapshot) const
 	               : m_Journal.DwarfChoice() == 2 ? "지름길 봉인은 유지되고 산길 교역은 계속된다."
 	                                              : "폐광 수호체가 광부의 귀환 신호를 기다린다."};
 	snapshot.villages.push_back(city);
+	MonitorVillage highlands;
+	highlands.id = "highlands";
+	highlands.name = "바람등 고원과 쉼터";
+	highlands.population = 2;
+	highlands.mood = m_Journal.DragonChoice() == 3 ? "서로 거리를 지킴"
+	                 : m_Journal.DragonChoice()    ? "경계의 기억을 나눔"
+	                                               : "낯선 발걸음을 관찰함";
+	highlands.disposition = m_Journal.DragonChoice() == 1   ? "서식지 보존 협약"
+	                        : m_Journal.DragonChoice() == 2 ? "관찰자 인정"
+	                        : m_Journal.DragonChoice() == 3 ? "바람길 통행 거부"
+	                                                        : "아직 판단하지 않음";
+	highlands.rumorsImplemented = true;
+	highlands.rumors = {
+	    m_Journal.DragonChoice() == 3 ? "바람길은 닫혀 있지만 고원으로 돌아갈 수 있다."
+	    : m_Journal.DragonChoice()    ? "고룡이 돌등성이 바람길을 열었다."
+	                                  : "비늘은 전쟁이 아니라 탈피의 흔적이라는 이야기가 돈다."};
+	snapshot.villages.push_back(highlands);
 }
 
 int FirstLevel::AttackPower() const
@@ -258,7 +302,9 @@ void FirstLevel::Generate()
 			if (!x || !y || x == Columns - 1 || y == Rows - 1)
 				m_Tiles[y * Columns + x] = Tile::Tree;
 	// Reject every obstacle that would isolate any traversable cell.
-	for (int i = 0; m_Region != Region::DwarfCity && i < 2600 * Columns * Rows / (96 * 80); ++i)
+	for (int i = 0; m_Region != Region::DwarfCity && m_Region != Region::DragonRoost &&
+	                i < 2600 * Columns * Rows / (96 * 80);
+	     ++i)
 	{
 		int x = 1 + Random() % (Columns - 2), y = 1 + Random() % (Rows - 2);
 		int cell = y * Columns + x;
@@ -270,7 +316,8 @@ void FirstLevel::Generate()
 	}
 	for (auto& tile : m_Tiles)
 	{
-		if ((m_Region == Region::StoneRidge && tile == Tile::Water) ||
+		if (((m_Region == Region::StoneRidge || m_Region == Region::Highlands) &&
+		     tile == Tile::Water) ||
 		    (m_Region == Region::DwarfMine && (tile == Tile::Water || tile == Tile::Tree)))
 			tile = Tile::Rock;
 		else if (m_Region == Region::MistShore && tile == Tile::Rock)
@@ -278,7 +325,7 @@ void FirstLevel::Generate()
 	}
 	m_Enemies.clear();
 	m_EnemyActors.ClearChildren();
-	if (m_Region == Region::DwarfCity)
+	if (m_Region == Region::DwarfCity || m_Region == Region::DragonRoost)
 	{
 		m_FlowTarget = -1;
 		return;
@@ -303,6 +350,8 @@ void FirstLevel::Generate()
 		static const EnemyKind ridge[] = {
 		    EnemyKind::Wolf, EnemyKind::Beetle, EnemyKind::Bandit, EnemyKind::Archer};
 		static const EnemyKind mine[] = {EnemyKind::Beetle, EnemyKind::Guardian};
+		static const EnemyKind highland[] = {
+		    EnemyKind::ScaleLizard, EnemyKind::WindSprite, EnemyKind::Emberling};
 		EnemyKind kind;
 		if (WorldTravel::IsPassage(m_Region))
 			kind = road[m_Enemies.size() % 3];
@@ -310,14 +359,24 @@ void FirstLevel::Generate()
 			kind = ridge[m_Enemies.size() % 4];
 		else if (m_Region == Region::DwarfMine)
 			kind = mine[m_Enemies.size() % 2];
+		else if (m_Region == Region::Highlands)
+			kind = highland[m_Enemies.size() % 3];
 		else
 		{
 			kind = static_cast<EnemyKind>(m_Enemies.size() % 4);
 			if (Distance(p, Camp) < 20)
 				kind = EnemyKind::Slime;
 		}
-		const char* names[] = {
-		    "Slime/", "Bandit/", "Archer/", "Priest/", "Wolf/", "Beetle/", "Guardian/"};
+		const char* names[] = {"Slime/",
+		                       "Bandit/",
+		                       "Archer/",
+		                       "Priest/",
+		                       "Wolf/",
+		                       "Beetle/",
+		                       "Guardian/",
+		                       "ScaleLizard/",
+		                       "WindSprite/",
+		                       "Emberling/"};
 		Actor& actor = m_EnemyActors.AddChild(
 		    names[static_cast<int>(kind)] + std::to_string(m_Enemies.size()), p);
 		m_Enemies.emplace_back(actor, p, kind);
@@ -364,6 +423,8 @@ void FirstLevel::Begin(uint32_t seed, bool resetProgress, Region region, Region 
 	m_Dialogue.clear();
 	m_DialoguePage = 0;
 	m_ChoosingDwarf = false;
+	m_ChoosingDragon = false;
+	m_TrialWaves = 0;
 	m_StoryAction = StoryAction::None;
 	Generate();
 	BuildScene();
@@ -374,9 +435,10 @@ void FirstLevel::Begin(uint32_t seed, bool resetProgress, Region region, Region 
 
 bool FirstLevel::SafeExit(Point position, float margin) const
 {
-	if (m_Region == Region::DwarfCity)
+	if (m_Region == Region::DwarfCity || m_Region == Region::DragonRoost)
 		return true;
-	if (m_Region == Region::StoneRidge && Distance(position, {55, 41}) <= margin)
+	if ((m_Region == Region::StoneRidge || m_Region == Region::Highlands) &&
+	    Distance(position, {55, 41}) <= margin)
 		return true;
 	for (const auto& exit : WorldTravel::Exits(m_Region))
 		if (Distance(position, exit.position) <= margin)
@@ -501,7 +563,10 @@ void FirstLevel::Attack()
 		if (!enemy.actor.IsEnabled() || enemy.hp <= 0 || distance > 2.6f ||
 		    facing < -.15f * distance || !ClearLine(m_Player, enemy.position))
 			continue;
-		int armor = enemy.kind == EnemyKind::Beetle && enemy.windup <= 0 ? 3 : 0;
+		int armor = (enemy.kind == EnemyKind::Beetle || enemy.kind == EnemyKind::ScaleLizard) &&
+		                    enemy.windup <= 0
+		                ? 3
+		                : 0;
 		enemy.hp = std::max(0, enemy.hp - std::max(1, AttackPower() - armor));
 		enemy.flash = .15f;
 		if (!enemy.hp)
@@ -509,6 +574,7 @@ void FirstLevel::Attack()
 			enemy.respawn = 12;
 			enemy.windup = 0;
 			enemy.charge = 0;
+			enemy.heat = 0;
 			enemy.actor.SetVisible(false);
 			if (m_Drops.size() >= 256)
 			{
@@ -518,11 +584,18 @@ void FirstLevel::Attack()
 			}
 			Actor& drop = m_DropActors.AddChild("Loot/" + std::to_string(m_Kills));
 			drop.SetWorldPosition(enemy.position);
-			int material = enemy.kind == EnemyKind::Beetle     ? 1
-			               : enemy.kind == EnemyKind::Guardian ? 2
-			                                                   : 0;
-			LevelModel lootModels[] = {
-			    LevelModel::TrailLoot, LevelModel::OreLoot, LevelModel::PartsLoot};
+			int material = enemy.kind == EnemyKind::Beetle        ? 1
+			               : enemy.kind == EnemyKind::Guardian    ? 2
+			               : enemy.kind == EnemyKind::ScaleLizard ? 3
+			               : enemy.kind == EnemyKind::WindSprite  ? 4
+			               : enemy.kind == EnemyKind::Emberling   ? 5
+			                                                      : 0;
+			LevelModel lootModels[] = {LevelModel::TrailLoot,
+			                           LevelModel::OreLoot,
+			                           LevelModel::PartsLoot,
+			                           LevelModel::ScaleLoot,
+			                           LevelModel::WindLoot,
+			                           LevelModel::EmberLoot};
 			ModelActor(drop, lootModels[material]);
 			m_Drops.push_back({&drop, Stats(enemy.kind).coins, 1, material});
 			++m_Kills;
@@ -578,6 +651,18 @@ bool FirstLevel::Key(unsigned char key)
 		}
 		return false;
 	}
+	if (m_ChoosingDragon)
+	{
+		if (key >= '1' && key <= '3' && m_Journal.ChooseDragon(key - '0'))
+		{
+			m_ChoosingDragon = false;
+			if (key == '2')
+				StartDragonTrial();
+			else
+				InteractDragon();
+		}
+		return false;
+	}
 	if (!m_Dialogue.empty())
 	{
 		if ((key == 'e' || key == ' ') && ++m_DialoguePage == m_Dialogue.size())
@@ -600,7 +685,11 @@ bool FirstLevel::Key(unsigned char key)
 			if (!m_Journal.CanTravel(m_Region, destination))
 			{
 				Message(
-				    destination == Region::DwarfCity
+				    destination == Region::DragonRoost && m_Region == Region::Highlands
+				        ? L"쉼터의 표식이 흐릿합니다. 길잡이와 대화하고 중앙의 경계문을 먼저 조사하세요."
+				    : destination == Region::DragonRoost || m_Region == Region::DragonRoost
+				        ? L"고룡의 바람길은 아직 닫혀 있습니다. 협상이나 시험 뒤 기억을 들으면 열립니다."
+				    : destination == Region::DwarfCity
 				        ? L"도시의 파수꾼: 폐광 작업 기록을 확인한 여행자만 맞이합니다. 기록을 먼저 조사하세요."
 				        : L"봉인된 분지 지름길입니다. 도시 기록관에게 교역 재개 여부를 결정하세요.");
 				return false;
@@ -608,11 +697,20 @@ bool FirstLevel::Key(unsigned char key)
 			m_RequestedExit = destination;
 			return true;
 		}
+		if (m_DragonTrace && Distance(m_Player, m_DragonTrace->WorldPosition()) < 2.5f &&
+		    ClearLine(m_Player, m_DragonTrace->WorldPosition()))
+		{
+			InteractDragon();
+			return false;
+		}
 		if ((m_StoryContact && Distance(m_Player, m_StoryContact->WorldPosition()) < 2.5f &&
 		     ClearLine(m_Player, m_StoryContact->WorldPosition())) ||
 		    (m_Smith && Distance(m_Player, m_Smith->WorldPosition()) < 2.5f))
 		{
-			InteractStory();
+			if (m_Region == Region::Highlands || m_Region == Region::DragonRoost)
+				InteractDragon();
+			else
+				InteractStory();
 			return false;
 		}
 		if (m_SurveyStone && Distance(m_Player, m_SurveyStone->WorldPosition()) < 2.5f &&
@@ -694,11 +792,23 @@ void FirstLevel::UpdateEnemy(Enemy& enemy, float dt)
 	enemy.cooldown = std::max(0.f, enemy.cooldown - dt);
 	float distance = Distance(enemy.position, m_Player);
 	bool safe = SafeExit(m_Player);
+	if (enemy.heat > 0)
+	{
+		enemy.heat = std::max(0.f, enemy.heat - dt);
+		if (enemy.heat > 0 && !safe && Distance(enemy.attackTarget, m_Player) < 2 &&
+		    m_HitCooldown <= 0 && ClearLine(enemy.position, m_Player))
+		{
+			m_Hp = std::max(0, m_Hp - std::max(1, stats.damage - Defense()));
+			m_HitCooldown = .6f;
+		}
+	}
 	if (enemy.charge > 0)
 	{
 		enemy.charge = std::max(0.f, enemy.charge - dt);
 		Point previous = enemy.position;
-		Move(enemy.position, {enemy.chargeDirection.x * 8 * dt, enemy.chargeDirection.y * 8 * dt});
+		float speed = enemy.kind == EnemyKind::ScaleLizard ? 6.f : 8.f;
+		Move(enemy.position,
+		     {enemy.chargeDirection.x * speed * dt, enemy.chargeDirection.y * speed * dt});
 		enemy.moving = Distance(previous, enemy.position) > .00001f;
 		if (!safe && Distance(enemy.position, m_Player) < 1.3f && m_HitCooldown <= 0 &&
 		    ClearLine(enemy.position, m_Player))
@@ -715,15 +825,23 @@ void FirstLevel::UpdateEnemy(Enemy& enemy, float dt)
 		if (enemy.windup <= 0)
 		{
 			enemy.cooldown = stats.cooldown;
-			bool ranged = enemy.kind == EnemyKind::Archer || enemy.kind == EnemyKind::Priest;
-			if (enemy.kind == EnemyKind::Wolf)
+			if (enemy.kind == EnemyKind::Emberling)
+			{
+				enemy.heat = 3;
+				return;
+			}
+			bool ranged = enemy.kind == EnemyKind::Archer || enemy.kind == EnemyKind::Priest ||
+			              enemy.kind == EnemyKind::WindSprite;
+			if (enemy.kind == EnemyKind::Wolf || enemy.kind == EnemyKind::ScaleLizard)
 			{
 				float length = Distance(enemy.position, enemy.attackTarget);
 				if (!safe && length > .01f)
 				{
 					enemy.chargeDirection = {(enemy.attackTarget.x - enemy.position.x) / length,
 					                         (enemy.attackTarget.y - enemy.position.y) / length};
-					enemy.charge = std::min(.45f, length / 8);
+					enemy.charge = enemy.kind == EnemyKind::ScaleLizard
+					                   ? std::min(.75f, length / 6)
+					                   : std::min(.45f, length / 8);
 				}
 				return;
 			}
@@ -736,6 +854,19 @@ void FirstLevel::UpdateEnemy(Enemy& enemy, float dt)
 			{
 				m_Hp = std::max(0, m_Hp - std::max(1, stats.damage - Defense()));
 				m_HitCooldown = .6f;
+				if (enemy.kind == EnemyKind::WindSprite && distance > .01f)
+				{
+					float dx = (m_Player.x - enemy.position.x) / distance;
+					float dy = (m_Player.y - enemy.position.y) / distance;
+					for (int i = 0; i < 10; ++i)
+					{
+						Point next = {m_Player.x + dx * .15f, m_Player.y + dy * .15f};
+						if (SafeExit(next) ||
+						    WorldTravel::OuterEdge(next, Columns * TileSize, Rows * TileSize, 4))
+							break;
+						Move(m_Player, {dx * .15f, dy * .15f});
+					}
+				}
 			}
 		}
 		return;
@@ -778,8 +909,9 @@ void FirstLevel::UpdateEnemy(Enemy& enemy, float dt)
 		return;
 	}
 	// Ranged enemies retreat when approached, without crossing blocked cells.
-	if ((enemy.kind == EnemyKind::Archer || enemy.kind == EnemyKind::Priest) && distance < 3 &&
-	    distance > .01f)
+	if ((enemy.kind == EnemyKind::Archer || enemy.kind == EnemyKind::Priest ||
+	     enemy.kind == EnemyKind::WindSprite || enemy.kind == EnemyKind::Emberling) &&
+	    distance < 3 && distance > .01f)
 	{
 		Point previous = enemy.position;
 		float step = stats.speed * dt / distance;
@@ -859,6 +991,12 @@ LevelModel FirstLevel::EnemyModel(EnemyKind kind) const
 		return LevelModel::Beetle;
 	case EnemyKind::Guardian:
 		return LevelModel::Guardian;
+	case EnemyKind::ScaleLizard:
+		return LevelModel::ScaleLizard;
+	case EnemyKind::WindSprite:
+		return LevelModel::WindSprite;
+	case EnemyKind::Emberling:
+		return LevelModel::Emberling;
 	default:
 		return LevelModel::Slime;
 	}
@@ -892,6 +1030,8 @@ void FirstLevel::BuildDwarfScene()
 
 Point FirstLevel::StoryTarget() const
 {
+	if (m_DragonTrace && m_Journal.DragonProgress() == QuestJournal::DragonStage::Trace)
+		return m_DragonTrace->WorldPosition();
 	if (m_StoryContact && (m_Region != Region::StoneRidge || m_Journal.Investigated(m_Region)))
 		return m_StoryContact->WorldPosition();
 	return WorldTravel::SurveyStone;
@@ -982,6 +1122,19 @@ void FirstLevel::FinishStory()
 		m_Journal.ReadDwarfRecord();
 	else if (m_StoryAction == StoryAction::Council && m_Journal.HearDwarfCouncil())
 		m_ChoosingDwarf = true;
+	else if (m_StoryAction == StoryAction::DragonStart)
+		m_Journal.StartDragonStory();
+	else if (m_StoryAction == StoryAction::DragonTrace)
+		m_Journal.ReadDragonTrace();
+	else if (m_StoryAction == StoryAction::DragonAudience && m_Journal.HearDragon())
+		m_ChoosingDragon = true;
+	else if (m_StoryAction == StoryAction::DragonMemory && m_Journal.ReadDragonMemory())
+	{
+		GainExperience(75);
+		Message(m_Journal.DragonChoice() == 3
+		            ? L"고룡과 거리 두기 · 고원으로 돌아가는 길은 유지됩니다."
+		            : L"고룡의 기억 기록 · 돌등성이로 향하는 바람길이 열렸습니다.");
+	}
 	m_StoryAction = StoryAction::None;
 }
 
@@ -998,7 +1151,8 @@ void FirstLevel::ModelActor(Actor& actor, LevelModel model, int enemy)
 	    [this, model, enemy](Actor& node, Renderer& r)
 	    {
 		    Point s = Project(node.Position(), m_Width, m_Height);
-		    if (s.x < -100 || s.x > m_Width + 100 || s.y < -50 || s.y > m_Height + 140)
+		    float margin = model == LevelModel::Dragon ? 140.f : 100.f;
+		    if (s.x < -margin || s.x > m_Width + margin || s.y < -50 || s.y > m_Height + 140)
 			    return;
 		    Color tint = {1, 1, 1, 1};
 		    if (enemy >= 0 && m_Enemies[enemy].flash > 0)
@@ -1039,6 +1193,8 @@ void FirstLevel::ModelActor(Actor& actor, LevelModel model, int enemy)
 		    }
 		    else
 		    {
+			    if (model == LevelModel::WindSprite)
+				    s.y -= 5 + std::sin(m_Time * 3 + node.Position().x) * 4;
 			    if (enemy >= 0 && m_Enemies[enemy].moving)
 				    s.y -=
 				        std::abs(std::sin(m_Time * (model == LevelModel::Guardian ? 4 : 12))) * 2;
@@ -1053,23 +1209,43 @@ void FirstLevel::ModelActor(Actor& actor, LevelModel model, int enemy)
 	    [this, model, enemy](Actor& node, Renderer& r)
 	    {
 		    Point s = Project(node.Position(), m_Width, m_Height);
-		    if (s.x < -100 || s.x > m_Width + 100 || s.y < -50 || s.y > m_Height + 140)
+		    bool warning = enemy >= 0 && (m_Enemies[enemy].windup > 0 || m_Enemies[enemy].heat > 0);
+		    if (!warning &&
+		        (s.x < -100 || s.x > m_Width + 100 || s.y < -50 || s.y > m_Height + 140))
 			    return;
 		    r.SoftEllipse(s.x + 8,
 		                  s.y + 3,
-		                  model == LevelModel::Tree ? 38.f : 23.f,
-		                  10,
+		                  model == LevelModel::Dragon ? 85.f
+		                  : model == LevelModel::Tree ? 38.f
+		                                              : 23.f,
+		                  model == LevelModel::Dragon ? 25.f : 10.f,
 		                  {.025f, .035f, .03f, .32f});
 		    if (enemy >= 0 && m_Enemies[enemy].windup > 0)
 		    {
 			    const Enemy& foe = m_Enemies[enemy];
-			    Point warning = foe.kind == EnemyKind::Archer || foe.kind == EnemyKind::Priest ||
-			                            foe.kind == EnemyKind::Wolf ||
-			                            foe.kind == EnemyKind::Guardian
-			                        ? Project(foe.attackTarget, m_Width, m_Height)
-			                        : s;
-			    float radius = foe.kind == EnemyKind::Guardian ? 76.f : 38.f;
+			    Point warning =
+			        foe.kind == EnemyKind::Archer || foe.kind == EnemyKind::Priest ||
+			                foe.kind == EnemyKind::Wolf || foe.kind == EnemyKind::Guardian ||
+			                foe.kind == EnemyKind::ScaleLizard ||
+			                foe.kind == EnemyKind::WindSprite || foe.kind == EnemyKind::Emberling
+			            ? Project(foe.attackTarget, m_Width, m_Height)
+			            : s;
+			    float radius = foe.kind == EnemyKind::Guardian || foe.kind == EnemyKind::Emberling
+			                       ? 76.f
+			                       : 38.f;
 			    r.Ellipse(warning.x, warning.y, radius, radius * .5f, {1, .19f, .10f, .35f});
+			    if (foe.kind == EnemyKind::ScaleLizard)
+				    r.Polygon({{s.x - 4, s.y}, {s.x + 4, s.y}, warning}, {1, .50f, .16f, .35f});
+		    }
+		    if (enemy >= 0 && m_Enemies[enemy].heat > 0)
+		    {
+			    Point p = Project(m_Enemies[enemy].attackTarget, m_Width, m_Height);
+			    r.Ellipse(p.x, p.y, 65, 32, {1.2f, .31f, .08f, .48f});
+			    r.Polygon(
+			        {{p.x - 30, p.y}, {p.x + 30, p.y}, {p.x + 30, p.y - 32}, {p.x - 30, p.y - 32}},
+			        {1, 1, 1, .75f},
+			        Material::Flame,
+			        {{-1, 0}, {1, 0}, {1, 1}, {-1, 1}});
 		    }
 	    });
 	if (enemy >= 0)
@@ -1096,11 +1272,14 @@ void FirstLevel::BuildScene()
 	m_Exits.clear();
 	m_SurveyStone = nullptr;
 	m_StoryContact = m_Smith = nullptr;
-	Color terrainColor = m_Region == Region::DwarfMine    ? Color{.34f, .33f, .28f, 1}
-	                     : m_Region == Region::DwarfCity  ? Color{.43f, .43f, .36f, 1}
-	                     : m_Region == Region::StoneRidge ? Color{.39f, .40f, .29f, 1}
-	                     : m_Region == Region::MistShore  ? Color{.24f, .36f, .35f, 1}
-	                                                      : Color{.25f, .34f, .18f, 1};
+	m_DragonTrace = nullptr;
+	Color terrainColor = m_Region == Region::Highlands     ? Color{.43f, .48f, .35f, 1}
+	                     : m_Region == Region::DragonRoost ? Color{.40f, .37f, .32f, 1}
+	                     : m_Region == Region::DwarfMine   ? Color{.34f, .33f, .28f, 1}
+	                     : m_Region == Region::DwarfCity   ? Color{.43f, .43f, .36f, 1}
+	                     : m_Region == Region::StoneRidge  ? Color{.39f, .40f, .29f, 1}
+	                     : m_Region == Region::MistShore   ? Color{.24f, .36f, .35f, 1}
+	                                                       : Color{.25f, .34f, .18f, 1};
 	// Aggregate ground tiles in 8x8 groups; props still have independent Actor ownership.
 	for (int cy = 0; cy < Rows; cy += 8)
 		for (int cx = 0; cx < Columns; cx += 8)
@@ -1232,6 +1411,7 @@ void FirstLevel::BuildScene()
 		    });
 	}
 	BuildDwarfScene();
+	BuildDragonScene();
 	m_PlayerActor.SetUpdate(
 	    [this](Actor&, float dt)
 	    {
@@ -1295,7 +1475,7 @@ void FirstLevel::DrawHud(Renderer& r, int width, int height, bool paused)
 	r.Text(30,
 	       24,
 	       std::wstring(WorldTravel::Name(m_Region)) +
-	           (m_Region == Region::DwarfCity      ? L" · 평화 지역"
+	           (m_Region == Region::DwarfCity || m_Region == Region::DragonRoost ? L" · 대화 지역"
 	            : WorldTravel::IsPassage(m_Region) ? L" · 위험한 교역길"
 	                                               : L" · 탐험 지역"),
 	       Gold);
@@ -1317,7 +1497,8 @@ void FirstLevel::DrawHud(Renderer& r, int width, int height, bool paused)
 	       Cream);
 	r.Text(30,
 	       126,
-	       m_Region == Region::DwarfCity ? L"평화 구역 · 기록관과 대장장이에게 E로 대화"
+	       m_Region == Region::DragonRoost ? L"고룡에게 E로 대화 · 시험은 주황색 바닥 예고 회피"
+	       : m_Region == Region::DwarfCity ? L"평화 구역 · 기록관과 대장장이에게 E로 대화"
 	       : m_Level >= 3 && m_Shards > 0
 	           ? L"성장 목표 달성 · 출입구에서 E로 다음 지역 이동"
 	           : L"성장 목표: 3레벨 + 탐험 결정 1개 · 출구는 언제든 이용 가능",
@@ -1361,7 +1542,16 @@ void FirstLevel::DrawHud(Renderer& r, int width, int height, bool paused)
 	if (((m_StoryContact && Distance(m_Player, m_StoryContact->WorldPosition()) < 2.5f) ||
 	     (m_Smith && Distance(m_Player, m_Smith->WorldPosition()) < 2.5f)) &&
 	    !m_Map && !m_Stats && !paused && !IsStoryOpen())
-		r.Text(30, height - 120.f, L"[E] 드워프 이야기 · 대화/기록 조사", Gold);
+		r.Text(30, height - 120.f, L"[E] 이야기 · 대화/기록 조사", Gold);
+	if (m_DragonTrace && Distance(m_Player, m_DragonTrace->WorldPosition()) < 2.5f &&
+	    !IsStoryOpen() && !m_Map && !m_Stats && !paused)
+		r.Text(30, height - 120.f, L"[E] 벗겨진 비늘과 경계문 조사", Gold);
+	if (m_TrialWaves > 0)
+		r.Text(30,
+		       274,
+		       L"회피 시험 · 남은 울림 " + std::to_wstring(m_TrialWaves) +
+		           L" · 바닥 예고에서 벗어나세요",
+		       Gold);
 	if (m_Map)
 	{
 		float scale = std::min((width - 100.f) / Columns, (height - 140.f) / Rows);
@@ -1417,10 +1607,21 @@ void FirstLevel::DrawHud(Renderer& r, int width, int height, bool paused)
 			mark(m_StoryContact->WorldPosition(), target ? Gold : Color{.75f, .55f, 1, 1});
 			r.Text(left + m_StoryContact->WorldPosition().x / 2 * scale - 65,
 			       top + m_StoryContact->WorldPosition().y / 2 * scale - 28,
-			       m_Region == Region::DwarfMine   ? L"작업 기록대"
-			       : m_Region == Region::DwarfCity ? L"기록관 브린"
-			                                       : L"파수꾼 토르빅",
+			       m_Region == Region::Highlands     ? L"길잡이 세라"
+			       : m_Region == Region::DragonRoost ? L"고룡 아르켄"
+			       : m_Region == Region::DwarfMine   ? L"작업 기록대"
+			       : m_Region == Region::DwarfCity   ? L"기록관 브린"
+			                                         : L"파수꾼 토르빅",
 			       Cream);
+		}
+		if (m_DragonTrace)
+		{
+			mark(m_DragonTrace->WorldPosition(),
+			     m_Journal.DragonProgress() == QuestJournal::DragonStage::Trace
+			         ? Gold
+			         : Color{.8f, .7f, .4f, 1});
+			r.Text(
+			    left + 49.f / 2 * scale - 90, top + 41.f / 2 * scale + 10, L"비늘과 경계문", Cream);
 		}
 		mark(m_Player, {1, 1, 1, 1});
 		r.Text(left,
@@ -1450,7 +1651,13 @@ void FirstLevel::DrawHud(Renderer& r, int width, int height, bool paused)
 		           std::to_wstring(m_Materials[1]) + L" · 수호체 부품 " +
 		           std::to_wstring(m_Materials[2]),
 		       Gold);
-		r.Text(x + 22, y + 275, L"전리품과 성장 기록은 이번 실행 동안 유지됩니다.", Cream);
+		r.Text(x + 22,
+		       y + 260,
+		       L"능선 비늘 " + std::to_wstring(m_Materials[3]) + L" · 바람 결정 " +
+		           std::to_wstring(m_Materials[4]) + L" · 열맥 잔재 " +
+		           std::to_wstring(m_Materials[5]),
+		       Gold);
+		r.Text(x + 22, y + 300, L"전리품과 성장 기록은 이번 실행 동안 유지됩니다.", Cream);
 	}
 	if (paused || m_Hp <= 0)
 	{
@@ -1471,8 +1678,27 @@ void FirstLevel::DrawHud(Renderer& r, int width, int height, bool paused)
 		float panelWidth = std::min(1000.f, width - 70.f), left = (width - panelWidth) * .5f;
 		float top = height - 320.f;
 		r.Rect(left, top, panelWidth, 210, {.035f, .065f, .065f, .98f});
-		r.Text(left + 22, top + 15, L"돌에 새긴 귀환 약속", Gold);
-		if (m_ChoosingDwarf)
+		r.Text(left + 22,
+		       top + 15,
+		       m_Region == Region::Highlands || m_Region == Region::DragonRoost
+		           ? L"바람이 기억하는 경계"
+		           : L"돌에 새긴 귀환 약속",
+		       Gold);
+		if (m_ChoosingDragon)
+		{
+			r.Text(left + 22, top + 55, L"[1] 협상 · 서식지 보존 약속, 바람길 개방", Cream);
+			r.Text(
+			    left + 22, top + 88, L"[2] 회피 시험 · 세 번의 울림 회피 후 기억과 바람길", Cream);
+			r.Text(left + 22,
+			       top + 121,
+			       L"[3] 거리 두기 · 경고만 기록, 바람길 닫힘, 고원 길 유지",
+			       Cream);
+			r.Text(left + 22,
+			       top + 170,
+			       L"접근 방식은 변경할 수 없습니다. 시험 실패 시 E로 재시도합니다.",
+			       Gold);
+		}
+		else if (m_ChoosingDwarf)
 		{
 			r.Text(left + 22, top + 55, L"[1] 감시 아래 교역 재개 · 분지 지름길 개방", Cream);
 			r.Text(left + 22,
