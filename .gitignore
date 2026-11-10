@@ -26,3 +26,7 @@
 /out/
 /build/
 /CMakeUserPresets.json
+
+# Private environment files
+/.env
+/.env.*

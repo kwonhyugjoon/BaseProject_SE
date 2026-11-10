@@ -384,6 +384,51 @@ void FirstLevel::Generate()
 	m_FlowTarget = -1;
 }
 
+void FirstLevel::ResetProgress()
+{
+	m_Level = 1;
+	m_Experience = 0;
+	m_Hp = 100;
+	m_Coins = m_Shards = m_Kills = 0;
+	m_Materials.fill(0);
+}
+
+void FirstLevel::ClearInput()
+{
+	m_AttackQueued = false;
+	m_Input = nullptr;
+}
+
+bool FirstLevel::IsSimulationPaused() const
+{
+	return m_Hp <= 0 || m_Map || m_Stats || IsStoryOpen() || m_Journal.IsOpen();
+}
+
+void FirstLevel::Reset()
+{
+	ResetProgress();
+	ClearInput();
+	m_Initialized = false;
+	m_Enemies.clear();
+	m_Drops.clear();
+	m_Exits.clear();
+	m_EnemyActors.ClearChildren();
+	m_DropActors.ClearChildren();
+	m_StaticActors.ClearChildren();
+	m_PlayerActor.ClearChildren();
+	m_SurveyStone = m_StoryContact = m_Smith = m_DragonTrace = nullptr;
+	m_Dialogue.clear();
+	m_DialoguePage = 0;
+	m_StoryAction = StoryAction::None;
+	m_ChoosingDwarf = m_ChoosingDragon = m_Map = m_Stats = m_Walking = false;
+	m_TrialWaves = 0;
+	m_TrialWindup = 0;
+	m_Message.clear();
+	m_RequestedExit = Exit::None;
+	m_Time = m_Swing = m_AttackCooldown = m_HitCooldown = m_MessageTime = 0;
+	m_FlowTarget = -1;
+}
+
 void FirstLevel::Begin(uint32_t seed, bool resetProgress, Region region, Region from)
 {
 	m_Region = region;
@@ -392,15 +437,8 @@ void FirstLevel::Begin(uint32_t seed, bool resetProgress, Region region, Region 
 	m_Seed = seed ? seed : 1;
 	m_Random = m_Seed;
 	if (!m_Initialized || resetProgress)
-	{
-		m_Level = 1;
-		m_Experience = 0;
-		m_Hp = 100;
-		m_Coins = 0;
-		m_Shards = 0;
-		m_Materials.fill(0);
-		m_Kills = 0;
-	}
+		ResetProgress();
+	ClearInput();
 	m_Models.Load();
 	m_Initialized = true;
 	m_Player = Camp;
@@ -609,8 +647,8 @@ void FirstLevel::Pickup()
 	int picked = 0;
 	for (auto it = m_Drops.begin(); it != m_Drops.end();)
 	{
-		if (Distance(it->actor->Position(), m_Player) < 2.5f &&
-		    ClearLine(m_Player, it->actor->Position()))
+		if (Distance(it->actor->WorldPosition(), m_Player) < 2.5f &&
+		    ClearLine(m_Player, it->actor->WorldPosition()))
 		{
 			m_Coins += it->coins;
 			m_Shards += it->shards;
@@ -670,11 +708,19 @@ bool FirstLevel::Key(unsigned char key)
 		return false;
 	}
 	if (key == 'i')
+	{
 		m_Stats = !m_Stats;
+		ClearInput();
+	}
 	if (key == 'm')
+	{
 		m_Map = !m_Map;
+		ClearInput();
+	}
 	if (m_Map || m_Stats)
 		return false;
+	if (key == ' ')
+		m_AttackQueued = true;
 	if (key == 'e')
 	{
 		Pickup();
@@ -762,8 +808,11 @@ void FirstLevel::UpdatePlayer(float dt)
 		            : L"숲에서 길을 잃고 한참 헤매다 익숙한 길로 돌아왔습니다.");
 		return;
 	}
-	if (m_Input[' '] && m_AttackCooldown <= 0)
+	if ((m_AttackQueued || m_Input[' ']) && m_AttackCooldown <= 0)
+	{
+		m_AttackQueued = false;
 		Attack();
+	}
 	if (Cell(m_Player) != m_FlowTarget)
 		RebuildFlow();
 }
@@ -771,7 +820,6 @@ void FirstLevel::UpdatePlayer(float dt)
 void FirstLevel::UpdateEnemy(Enemy& enemy, float dt)
 {
 	const EnemyStats& stats = Stats(enemy.kind);
-	enemy.moving = false;
 	enemy.glow = std::max(0.f, enemy.glow - dt);
 	enemy.flash = std::max(0.f, enemy.flash - dt);
 	if (enemy.hp <= 0)
@@ -809,7 +857,7 @@ void FirstLevel::UpdateEnemy(Enemy& enemy, float dt)
 		float speed = enemy.kind == EnemyKind::ScaleLizard ? 6.f : 8.f;
 		Move(enemy.position,
 		     {enemy.chargeDirection.x * speed * dt, enemy.chargeDirection.y * speed * dt});
-		enemy.moving = Distance(previous, enemy.position) > .00001f;
+		enemy.moving = enemy.moving || Distance(previous, enemy.position) > .00001f;
 		if (!safe && Distance(enemy.position, m_Player) < 1.3f && m_HitCooldown <= 0 &&
 		    ClearLine(enemy.position, m_Player))
 		{
@@ -904,7 +952,7 @@ void FirstLevel::UpdateEnemy(Enemy& enemy, float dt)
 			Point previous = enemy.position;
 			Move(enemy.position,
 			     {(target.x - enemy.position.x) * step, (target.y - enemy.position.y) * step});
-			enemy.moving = Distance(previous, enemy.position) > .00001f;
+			enemy.moving = enemy.moving || Distance(previous, enemy.position) > .00001f;
 		}
 		return;
 	}
@@ -917,7 +965,7 @@ void FirstLevel::UpdateEnemy(Enemy& enemy, float dt)
 		float step = stats.speed * dt / distance;
 		Move(enemy.position,
 		     {(enemy.position.x - m_Player.x) * step, (enemy.position.y - m_Player.y) * step});
-		enemy.moving = Distance(previous, enemy.position) > .00001f;
+		enemy.moving = enemy.moving || Distance(previous, enemy.position) > .00001f;
 	}
 	if (distance < stats.range && ClearLine(enemy.position, m_Player))
 	{
@@ -951,18 +999,22 @@ void FirstLevel::UpdateEnemy(Enemy& enemy, float dt)
 		Point previous = enemy.position;
 		Move(enemy.position,
 		     {(target.x - enemy.position.x) * step, (target.y - enemy.position.y) * step});
-		enemy.moving = Distance(previous, enemy.position) > .00001f;
+		bool moved = Distance(previous, enemy.position) > .00001f;
+		enemy.moving = enemy.moving || moved;
 		Point delta = {enemy.position.x - previous.x, enemy.position.y - previous.y};
-		enemy.facing = std::abs(delta.x - delta.y) > std::abs(delta.x + delta.y)
-		                   ? (delta.x > delta.y ? 0 : 2)
-		                   : (delta.x + delta.y > 0 ? 1 : 3);
+		if (moved)
+			enemy.facing = std::abs(delta.x - delta.y) > std::abs(delta.x + delta.y)
+			                   ? (delta.x > delta.y ? 0 : 2)
+			                   : (delta.x + delta.y > 0 ? 1 : 3);
 	}
 }
 
 bool FirstLevel::Update(float seconds, const bool* keys)
 {
 	m_Walking = false;
-	if (m_Hp <= 0 || m_Map || m_Stats || IsStoryOpen() || m_Journal.IsOpen())
+	for (auto& enemy : m_Enemies)
+		enemy.moving = false;
+	if (IsSimulationPaused())
 		return false;
 	float remaining = std::min(seconds, .25f);
 	m_MessageTime = std::max(0.f, m_MessageTime - remaining);
@@ -1150,7 +1202,7 @@ void FirstLevel::ModelActor(Actor& actor, LevelModel model, int enemy)
 	actor.SetDraw(
 	    [this, model, enemy](Actor& node, Renderer& r)
 	    {
-		    Point s = Project(node.Position(), m_Width, m_Height);
+		    Point s = Project(node.WorldPosition(), m_Width, m_Height);
 		    float margin = model == LevelModel::Dragon ? 140.f : 100.f;
 		    if (s.x < -margin || s.x > m_Width + margin || s.y < -50 || s.y > m_Height + 140)
 			    return;
@@ -1194,7 +1246,7 @@ void FirstLevel::ModelActor(Actor& actor, LevelModel model, int enemy)
 		    else
 		    {
 			    if (model == LevelModel::WindSprite)
-				    s.y -= 5 + std::sin(m_Time * 3 + node.Position().x) * 4;
+				    s.y -= 5 + std::sin(m_Time * 3 + node.WorldPosition().x) * 4;
 			    if (enemy >= 0 && m_Enemies[enemy].moving)
 				    s.y -=
 				        std::abs(std::sin(m_Time * (model == LevelModel::Guardian ? 4 : 12))) * 2;
@@ -1208,7 +1260,7 @@ void FirstLevel::ModelActor(Actor& actor, LevelModel model, int enemy)
 	shadow.SetDraw(
 	    [this, model, enemy](Actor& node, Renderer& r)
 	    {
-		    Point s = Project(node.Position(), m_Width, m_Height);
+		    Point s = Project(node.WorldPosition(), m_Width, m_Height);
 		    bool warning = enemy >= 0 && (m_Enemies[enemy].windup > 0 || m_Enemies[enemy].heat > 0);
 		    if (!warning &&
 		        (s.x < -100 || s.x > m_Width + 100 || s.y < -50 || s.y > m_Height + 140))
@@ -1253,7 +1305,7 @@ void FirstLevel::ModelActor(Actor& actor, LevelModel model, int enemy)
 		    .SetDraw(
 		        [this, enemy](Actor& node, Renderer& r)
 		        {
-			        Point s = Project(node.Position(), m_Width, m_Height);
+			        Point s = Project(node.WorldPosition(), m_Width, m_Height);
 			        if (s.x < -100 || s.x > m_Width + 100 || s.y < -50 || s.y > m_Height + 140)
 				        return;
 			        r.Rect(s.x - 18, s.y - 43, 36, 4, {.12f, .08f, .06f, 1});
@@ -1290,7 +1342,7 @@ void FirstLevel::BuildScene()
 			chunk.SetDraw(
 			    [this, cx, cy, terrainColor](Actor& actor, Renderer& r)
 			    {
-				    Point origin = actor.Position();
+				    Point origin = actor.WorldPosition();
 				    Point middle = Project({origin.x + 8, origin.y + 8}, m_Width, m_Height);
 				    if (middle.x < -450 || middle.x > m_Width + 450 || middle.y < -250 ||
 				        middle.y > m_Height + 250)
@@ -1421,7 +1473,7 @@ void FirstLevel::BuildScene()
 	m_PlayerActor.SetDraw(
 	    [this](Actor& actor, Renderer& r)
 	    {
-		    Point s = Project(actor.Position(), m_Width, m_Height);
+		    Point s = Project(actor.WorldPosition(), m_Width, m_Height);
 		    Color coat = m_HitCooldown > 0 ? Color{1, .30f, .25f, 1} : Color{.35f, .49f, .67f, 1};
 		    float cadence = m_Input && m_Input[GameInput::Sprint] ? 20.f : 10.f;
 		    r.Character(
@@ -1432,7 +1484,7 @@ void FirstLevel::BuildScene()
 	shadow.SetDraw(
 	    [this](Actor& actor, Renderer& r)
 	    {
-		    Point s = Project(actor.Position(), m_Width, m_Height);
+		    Point s = Project(actor.WorldPosition(), m_Width, m_Height);
 		    r.SoftEllipse(s.x + 8, s.y + 3, 23, 10, {.025f, .035f, .03f, .32f});
 	    });
 	m_PlayerActor.AddChild("Weapon").SetDraw(
@@ -1440,7 +1492,7 @@ void FirstLevel::BuildScene()
 	    {
 		    if (m_Swing <= 0)
 			    return;
-		    Point s = Project(actor.Position(), m_Width, m_Height);
+		    Point s = Project(actor.WorldPosition(), m_Width, m_Height);
 		    float angle = std::atan2((m_Aim.x + m_Aim.y) * 11.5f, (m_Aim.x - m_Aim.y) * 23);
 		    float swing = (1 - m_Swing / .18f) * 1.8f - .9f;
 		    Point tip = {s.x + std::cos(angle + swing) * 46,

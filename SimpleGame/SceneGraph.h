@@ -34,6 +34,7 @@ class SceneGraph
 	Actor* m_World;
 	Actor* m_UI;
 	std::vector<Actor*> m_Traversal;
+	std::vector<Actor*> m_BorrowedPositions;
 
 	struct DrawEntry
 	{

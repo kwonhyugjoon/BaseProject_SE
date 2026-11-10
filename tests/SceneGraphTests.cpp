@@ -1,4 +1,8 @@
+#include "../SimpleGame/Actor.h"
+#include <array>
+#define private public
 #include "../SimpleGame/SceneGraph.h"
+#undef private
 #include <cassert>
 #include <cmath>
 
@@ -109,4 +113,38 @@ int main()
 	assert(!scene.Root().RemoveChild(scene.World()));
 	assert(!scene.Root().RemoveChild(scene.UI()));
 	assert(scene.Root().Find("Child") == &child);
+	borrowed.y += 3;
+	scene.Update(0);
+	Expect(child.WorldPosition(), {29, 39});
+	Expect(grandchild.WorldPosition(), {30, 40});
+	SceneGraph cached;
+	for (int i = 0; i < 2000; ++i)
+		cached.World().AddChild("Static/" + std::to_string(i));
+	int updates = 0;
+	Actor& moving = cached.World().AddChild("Moving");
+	moving.SetUpdate(
+	    [&](Actor&, float)
+	    {
+		    ++updates;
+	    });
+	cached.Update(.01f);
+	assert(cached.m_Traversal.size() == 1);
+	const auto* storage = cached.m_Traversal.data();
+	for (int i = 0; i < 120; ++i)
+		cached.Update(.01f);
+	assert(updates == 121 && cached.m_Traversal.data() == storage);
+	Actor& late = cached.World().AddChild("Late");
+	late.SetUpdate(
+	    [&](Actor&, float)
+	    {
+		    ++updates;
+	    });
+	cached.Update(.01f);
+	assert(cached.m_Traversal.size() == 2 && updates == 123);
+	moving.SetUpdate({});
+	cached.Update(.01f);
+	assert(cached.m_Traversal.size() == 1 && updates == 124);
+	cached.World().RemoveChild(late);
+	cached.Update(.01f);
+	assert(cached.m_Traversal.empty() && updates == 124);
 }

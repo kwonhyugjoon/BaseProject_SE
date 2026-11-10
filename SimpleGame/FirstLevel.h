@@ -17,6 +17,9 @@ class FirstLevel
 	using Exit = WorldTravel::Region;
 
 	explicit FirstLevel(QuestJournal& journal);
+	void Reset();
+	void ClearInput();
+	bool IsSimulationPaused() const;
 
 	SceneGraph& Scene()
 	{
@@ -168,8 +171,10 @@ class FirstLevel
 	uint32_t m_Seed = 1, m_Random = 1;
 	float m_Time = 0, m_AttackCooldown = 0, m_Swing = 0, m_HitCooldown = 0, m_MessageTime = 0;
 	bool m_Initialized = false, m_Walking = false, m_Map = false, m_Stats = false;
+	bool m_AttackQueued = false;
 	std::wstring m_Message;
 	int AttackPower() const;
+	void ResetProgress();
 	int MaxHp() const;
 	int Defense() const;
 	static int ExperienceAt(int level);

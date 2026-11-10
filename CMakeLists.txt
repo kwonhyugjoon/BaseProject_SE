@@ -29,7 +29,7 @@ target_link_libraries(game_glew PUBLIC OpenGL::GL ${CMAKE_DL_LIBS})
 
 add_library(game_core STATIC
     SimpleGame/Actor.cpp SimpleGame/SceneGraph.cpp SimpleGame/AssetCache.cpp
-    SimpleGame/LevelModels.cpp SimpleGame/CharacterSprites.cpp SimpleGame/Renderer.cpp
+    SimpleGame/LevelModels.cpp SimpleGame/VillageModels.cpp SimpleGame/CharacterSprites.cpp SimpleGame/Renderer.cpp
     SimpleGame/FontRasterizer.cpp SimpleGame/PlatformPaths.cpp
     SimpleGame/FirstLevel.cpp SimpleGame/FirstLevelDragon.cpp SimpleGame/QuestJournal.cpp
     SimpleGame/MonitorState.cpp SimpleGame/MonitorServer.cpp)
@@ -59,7 +59,7 @@ include(CTest)
 if(BUILD_TESTING)
     foreach(name SprintTests QuestJournalTests WorldTravelTests RegionConnectivityTests
                  LevelExpansionTests TutorialPopulationTests DwarfStoryTests DragonStoryTests
-                 SceneGraphTests TreeCollisionGridTests FontTests GlfwInputTests)
+                 SceneGraphTests TreeCollisionGridTests FontTests GlfwInputTests ReviewRegressionTests VillageModelsTests)
         add_executable(${name} tests/${name}.cpp)
         target_link_libraries(${name} PRIVATE game_core)
         # Assertions are required even when testing the Release build.
@@ -71,8 +71,8 @@ if(BUILD_TESTING)
         game_assets(${name})
         add_test(NAME ${name} COMMAND ${name})
         set_tests_properties(${name} PROPERTIES WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
-            ENVIRONMENT "LOCALAPPDATA=${CMAKE_CURRENT_BINARY_DIR}/test-cache;XDG_CACHE_HOME=${CMAKE_CURRENT_BINARY_DIR}/test-cache")
-        file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/test-cache")
+            ENVIRONMENT "LOCALAPPDATA=${CMAKE_CURRENT_BINARY_DIR}/test-cache/${name};XDG_CACHE_HOME=${CMAKE_CURRENT_BINARY_DIR}/test-cache/${name}")
+        file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/test-cache/${name}")
     endforeach()
     add_executable(GlfwRenderTests tests/GlfwRenderTests.cpp)
     target_link_libraries(GlfwRenderTests PRIVATE game_core)

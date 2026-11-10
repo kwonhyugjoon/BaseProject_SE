@@ -10,6 +10,7 @@ This program is distributed WITHOUT ANY WARRANTY.
 #include "QuestJournal.h"
 #include "SceneGraph.h"
 #include "TreeCollisionGrid.h"
+#include "VillageModels.h"
 #include "MonitorState.h"
 #include "MonitorServer.h"
 #define GLFW_INCLUDE_NONE
@@ -37,6 +38,7 @@ namespace
 	const Color Cream = {.94f, .90f, .76f, 1}, Gold = {.98f, .73f, .36f, 1};
 	const Color Teal = {.40f, .89f, .83f, 1}, Panel = {.035f, .075f, .085f, .94f};
 	Renderer* renderer = nullptr;
+	VillageModels villageModels;
 	GLFWwindow* gameWindow = nullptr;
 	SceneGraph tutorialScene;
 	Actor& groundActors = tutorialScene.World().AddChild("Ground");
@@ -118,6 +120,12 @@ namespace
 	bool walking = false, postprocess = true;
 	int playerFacing = 1;
 
+	void ClearGameplayInput()
+	{
+		std::fill(std::begin(keys), std::end(keys), false);
+		firstLevel.ClearInput();
+	}
+
 	using Stage = QuestJournal::Stage;
 	constexpr Stage Elder = Stage::Elder, Scout = Stage::Scout, Rune = Stage::Rune;
 	constexpr Stage Fragment = Stage::Fragment, Fisher = Stage::Fisher, Shrine = Stage::Shrine;
@@ -195,7 +203,7 @@ namespace
 		Point& p;
 		float w, d;
 		Color roof;
-		mutable std::vector<ModelVertex> model;
+		mutable const VillageModels::Parts* model = nullptr;
 
 		House(Point position, float width, float depth, Color color)
 		    : actor(PlacedActor(houseActors, position)), p(actor.Position()), w(width), d(depth),
@@ -227,21 +235,21 @@ namespace
 		Point& p;
 		float size;
 		int kind, chunk;
-		mutable std::vector<ModelVertex> trunk;
-		mutable std::array<std::vector<ModelVertex>, 5> canopy;
-		mutable Point cachedPosition = {};
+		mutable const VillageModels::Parts* models = nullptr;
+		Point modelSeed;
 		mutable float cachedSize = 0;
 		mutable int cachedKind = -1;
 
 		Tree(Point position, float scale, int type)
 		    : actor(PlacedActor(treeActors, position)), p(actor.Position()), size(scale),
-		      kind(type), chunk(TreeChunkIndex(position))
+		      kind(type), chunk(TreeChunkIndex(position)), modelSeed(position)
 		{
 		}
 	};
 
 	std::vector<Tree> trees;
 	TreeCollisionGrid treeCollision(MapWidth, MapHeight);
+	std::vector<Point> treeSpatialPositions;
 	Point route[] = {
 	    {18, 50}, {20, 45}, {12, 29}, {21, 11}, {34, 13}, {38, 38}, {45, 43}, {43, 24}};
 	Point outerRoute[] = {{20, 49}, {40, 55}, {62, 64}, {76, 85}, {106, 96}, {132, 108}};
@@ -432,7 +440,7 @@ namespace
 		dialogue = pages;
 		page = 0;
 		afterDialogue = done;
-		std::fill(std::begin(keys), std::end(keys), false);
+		ClearGameplayInput();
 	}
 
 	void EnterRegion(FirstLevel::Region region,
@@ -443,7 +451,7 @@ namespace
 		questJournal.RecordTravel(from, region);
 		inFirstLevel = true;
 		walking = false;
-		std::fill(std::begin(keys), std::end(keys), false);
+		ClearGameplayInput();
 		lastFrame = FrameClock::now();
 	}
 
@@ -512,7 +520,7 @@ namespace
 		                         .count();
 		snapshot.scene = inFirstLevel ? WorldTravel::Key(firstLevel.CurrentRegion()) : "tutorial";
 		snapshot.paused =
-		    paused || questJournal.IsOpen() || (inFirstLevel && firstLevel.IsStoryOpen());
+		    paused || questJournal.IsOpen() || (inFirstLevel && firstLevel.IsSimulationPaused());
 		MonitorVillage village;
 		village.id = "reedmere";
 		village.name = "갈대여울과 주변";
@@ -770,7 +778,7 @@ namespace
 			return false;
 
 		for (Actor* ruin : ruinActors)
-			if (Distance(p, ruin->Position()) < .85f)
+			if (Distance(p, ruin->WorldPosition()) < .85f)
 				return false;
 		return true;
 	}
@@ -966,14 +974,25 @@ namespace
 
 	void RebuildTreeSpatialData()
 	{
+		bool changed = treeSpatialPositions.size() != trees.size();
+		if (changed)
+			treeSpatialPositions.resize(trees.size(), {0, 0});
+		for (size_t i = 0; i < trees.size(); ++i)
+		{
+			Point position = trees[i].actor.WorldPosition();
+			Point& cached = treeSpatialPositions[i];
+			changed = changed || position.x != cached.x || position.y != cached.y;
+			cached = position;
+		}
+		if (!changed)
+			return;
 		treeCollision.Clear();
 		for (auto& bounds : treeChunkBounds)
 			bounds.populated = false;
-		for (const auto& tree : trees)
+		for (size_t i = 0; i < trees.size(); ++i)
 		{
-			Point position = tree.actor.WorldPosition();
-			treeCollision.Add(position);
-			treeChunkBounds[tree.chunk].Add(position);
+			treeCollision.Add(treeSpatialPositions[i]);
+			treeChunkBounds[trees[i].chunk].Add(treeSpatialPositions[i]);
 		}
 	}
 
@@ -1123,18 +1142,11 @@ namespace
 		Box(p, 1.2f, .3f, .24f, {.31f, .18f, .085f, 1}, Material::Wood);
 		renderer->SoftEllipse(s.x, s.y - 8, 88 + flicker, 52, {2.0f, .72f, .16f, .18f});
 
-		for (int i = 0; i < 4; ++i)
-		{
-			float x = s.x + (i - 1.5f) * 5, y = s.y - 4;
-			float tip = 31 + std::sin(elapsed * 7 + i * 2 + p.x) * 9;
-			renderer->Polygon({{x - 8, y},
-			                   {x - 4 + flicker, y - tip * .6f},
-			                   {x + std::sin(elapsed * 6 + i) * 6, y - tip},
-			                   {x + 9, y}},
-			                  {2.4f, .57f, .09f, .75f});
-			renderer->Polygon({{x - 4, y}, {x + 2, y - tip * .6f}, {x + 5, y}},
-			                  {3.0f, 1.8f, .48f, .95f});
-		}
+		renderer->Polygon(
+		    {{s.x - 25, s.y}, {s.x + 25, s.y}, {s.x + 25, s.y - 58}, {s.x - 25, s.y - 58}},
+		    {1, 1, 1, 1},
+		    Material::Flame,
+		    {{-1, 0}, {1, 0}, {1, 1}, {-1, 1}});
 
 		for (int i = 0; i < 12; ++i)
 		{
@@ -1272,13 +1284,22 @@ namespace
 	void DrawHouse(const House& h)
 	{
 		Point origin = Project(h.p);
-		if (h.model.empty())
-			h.model = renderer->CaptureModel(origin,
-			                                 [&]()
-			                                 {
-				                                 DrawHouseGeometry(h);
-			                                 });
-		renderer->Model(origin, h.model);
+		if (!h.model)
+		{
+			uint64_t key = VillageModels::Key({0, h.w, h.d, h.roof.r, h.roof.g, h.roof.b});
+			h.model = villageModels.Find(key);
+			if (!h.model)
+			{
+				VillageModels::Parts parts;
+				parts[0] = renderer->CaptureModel(origin,
+				                                  [&]()
+				                                  {
+					                                  DrawHouseGeometry(h);
+				                                  });
+				h.model = &villageModels.Store(key, std::move(parts));
+			}
+		}
+		renderer->Model(origin, (*h.model)[0]);
 		Point chimney = {h.p.x + h.w * .25f, h.p.y - h.d * .15f};
 		Point smoke = Project({chimney.x + .27f, chimney.y + .27f}, 4.85f);
 
@@ -1295,9 +1316,17 @@ namespace
 
 	void BuildTreeModels(const Tree& t)
 	{
+		uint64_t key = VillageModels::Key(
+		    {1, t.modelSeed.x, t.modelSeed.y, t.size, static_cast<float>(t.kind)});
+		t.models = villageModels.Find(key);
+		t.cachedSize = t.size;
+		t.cachedKind = t.kind;
+		if (t.models)
+			return;
+		VillageModels::Parts parts;
 		Point origin = Project(t.p);
 		Color bark = {.30f, .23f, .14f, 1};
-		t.trunk =
+		parts[0] =
 		    renderer->CaptureModel(origin,
 		                           [&]()
 		                           {
@@ -1315,13 +1344,11 @@ namespace
 					                                  5 * t.size,
 					                                  bark);
 		                           });
-		for (auto& model : t.canopy)
-			model.clear();
 
 		if (t.kind == 0)
 		{
 			for (int i = 0; i < 5; ++i)
-				t.canopy[i] = renderer->CaptureModel(
+				parts[i + 1] = renderer->CaptureModel(
 				    origin,
 				    [&]()
 				    {
@@ -1349,7 +1376,7 @@ namespace
 		}
 		else
 		{
-			t.canopy[0] = renderer->CaptureModel(
+			parts[1] = renderer->CaptureModel(
 			    origin,
 			    [&]()
 			    {
@@ -1358,10 +1385,10 @@ namespace
 				    uv.reserve(16);
 				    for (int i = 0; i < 13; ++i)
 				    {
-					    float angle = i * 2.4f + t.p.x, ring = i < 9 ? 1.f : .48f;
+					    float angle = i * 2.4f + t.modelSeed.x, ring = i < 9 ? 1.f : .48f;
 					    float x = origin.x + std::cos(angle) * 25 * t.size * ring;
 					    float y = origin.y - 76 * t.size + std::sin(angle) * 26 * t.size * ring;
-					    float radius = (17 + 3 * std::sin(i * 7.f + t.p.y)) * t.size;
+					    float radius = (17 + 3 * std::sin(i * 7.f + t.modelSeed.y)) * t.size;
 					    float light = .88f - .12f * std::cos(angle) - .14f * std::sin(angle);
 					    outline.clear();
 					    uv.clear();
@@ -1377,15 +1404,14 @@ namespace
 				    }
 			    });
 		}
-		t.cachedPosition = t.p;
+		t.models = &villageModels.Store(key, std::move(parts));
 		t.cachedSize = t.size;
 		t.cachedKind = t.kind;
 	}
 
 	void DrawTree(const Tree& t)
 	{
-		if (t.trunk.empty() || t.cachedPosition.x != t.p.x || t.cachedPosition.y != t.p.y ||
-		    t.cachedSize != t.size || t.cachedKind != t.kind)
+		if (!t.models || t.cachedSize != t.size || t.cachedKind != t.kind)
 			BuildTreeModels(t);
 		Point p = Project(t.p), hero = Project(player);
 		auto smooth = [](float value)
@@ -1397,12 +1423,12 @@ namespace
 		float overlap = smooth((55 * t.size - std::abs(p.x - hero.x)) / (20 * t.size)) *
 		                smooth(dy / (20 * t.size)) * smooth((145 * t.size - dy) / (30 * t.size));
 		Color tint = {1, 1, 1, 1 - .9f * overlap};
-		renderer->Model(p, t.trunk, tint);
+		renderer->Model(p, (*t.models)[0], tint);
 		float sway = std::sin(elapsed * .8f + t.p.x) * 1.5f * t.size;
 		int count = t.kind == 0 ? 5 : 1;
 		for (int i = 0; i < count; ++i)
 			renderer->Model(
-			    {p.x + sway * (t.kind == 0 ? (i + 1) * .2f : 1), p.y}, t.canopy[i], tint);
+			    {p.x + sway * (t.kind == 0 ? (i + 1) * .2f : 1), p.y}, (*t.models)[i + 1], tint);
 	}
 
 	void DrawPerson(Point location, Color coat, bool hero, int index)
@@ -1504,7 +1530,7 @@ namespace
 					camera = player;
 					travelNotice = L"숲에서 길을 잃고 한참 헤매다 익숙한 길로 돌아왔습니다.";
 					travelNoticeTime = 5;
-					std::fill(std::begin(keys), std::end(keys), false);
+					ClearGameplayInput();
 				}
 			}
 		}
@@ -1518,7 +1544,7 @@ namespace
 		shadow.SetDraw(
 		    [radius, objectHeight, model](Actor& actor, Renderer& r)
 		    {
-			    Point position = actor.Position();
+			    Point position = actor.WorldPosition();
 			    if (!Visible(position))
 				    return;
 			    Point origin = Project(position);
@@ -1547,7 +1573,7 @@ namespace
 			animals[i].actor.SetDraw(
 			    [i](Actor& actor, Renderer&)
 			    {
-				    if (Visible(actor.Position()))
+				    if (Visible(actor.WorldPosition()))
 					    DrawAnimal(animals[i]);
 			    });
 			ShadowActor(animals[i].actor, animals[i].kind == 1 ? .4f : .8f, 1.2f);
@@ -1568,7 +1594,7 @@ namespace
 				    .SetDraw(
 				        [shade](Actor& actor, Renderer&)
 				        {
-					        Point p = actor.Position();
+					        Point p = actor.WorldPosition();
 					        if (Visible({p.x + 4, p.y + 4}, 260))
 						        GroundQuad(p.x,
 						                   p.y,
@@ -1588,7 +1614,7 @@ namespace
 				    .SetDraw(
 				        [delta, radius](Actor& actor, Renderer&)
 				        {
-					        Point p = actor.Position();
+					        Point p = actor.WorldPosition();
 					        Point line[] = {p, {p.x + delta.x, p.y + delta.y}};
 					        DrawPath(line, 2, radius);
 				        });
@@ -1614,19 +1640,22 @@ namespace
 		    .SetDraw(
 		        [](Actor& a, Renderer&)
 		        {
-			        GroundEllipse(a.Position(), 10, 8, {.53f, .49f, .39f, 1}, 0, Material::Stone);
+			        GroundEllipse(
+			            a.WorldPosition(), 10, 8, {.53f, .49f, .39f, 1}, 0, Material::Stone);
 		        });
 		PlacedActor(groundActors, VillagePoint({132, 107}))
 		    .SetDraw(
 		        [](Actor& a, Renderer&)
 		        {
-			        GroundEllipse(a.Position(), 8, 7, {.40f, .43f, .34f, 1}, 0, Material::Stone);
+			        GroundEllipse(
+			            a.WorldPosition(), 8, 7, {.40f, .43f, .34f, 1}, 0, Material::Stone);
 		        });
 		PlacedActor(groundActors, VillagePoint({100, 91}))
 		    .SetDraw(
 		        [](Actor& a, Renderer&)
 		        {
-			        GroundEllipse(a.Position(), 5, 4, {.46f, .38f, .26f, 1}, 0, Material::Dirt);
+			        GroundEllipse(
+			            a.WorldPosition(), 5, 4, {.46f, .38f, .26f, 1}, 0, Material::Dirt);
 		        });
 		for (int row = 0; row < 8; ++row)
 		{
@@ -1634,7 +1663,7 @@ namespace
 			field.SetDraw(
 			    [](Actor& a, Renderer&)
 			    {
-				    Point p = a.Position();
+				    Point p = a.WorldPosition();
 				    GroundQuad(p.x, p.y, .55f, 8, {.28f, .22f, .14f, 1}, 0, Material::Dirt);
 			    });
 			for (int k = 0; k < 10; ++k)
@@ -1642,7 +1671,7 @@ namespace
 				    .SetDraw(
 				        [](Actor& a, Renderer&)
 				        {
-					        Point p = Project(a.Position());
+					        Point p = Project(a.WorldPosition());
 					        renderer->Polygon({{p.x - 3, p.y}, {p.x, p.y - 9}, {p.x + 3, p.y}},
 					                          {.52f, .56f, .25f, 1});
 				        });
@@ -1652,9 +1681,10 @@ namespace
 		lake.SetDraw(
 		    [](Actor& a, Renderer&)
 		    {
-			    GroundEllipse(a.Position(), 13.3f, 11.3f, {.57f, .53f, .36f, 1}, 0, Material::Dirt);
-			    GroundEllipse(a.Position(), 12.8f, 10.8f, {.25f, .46f, .38f, 1});
-			    GroundEllipse(a.Position(), 12, 10, {.20f, .46f, .43f, 1}, 0, Material::Water);
+			    GroundEllipse(
+			        a.WorldPosition(), 13.3f, 11.3f, {.57f, .53f, .36f, 1}, 0, Material::Dirt);
+			    GroundEllipse(a.WorldPosition(), 12.8f, 10.8f, {.25f, .46f, .38f, 1});
+			    GroundEllipse(a.WorldPosition(), 12, 10, {.20f, .46f, .43f, 1}, 0, Material::Water);
 		    });
 		for (int i = 0; i < 28; ++i)
 		{
@@ -1664,7 +1694,7 @@ namespace
 			    .SetDraw(
 			        [i](Actor& a, Renderer&)
 			        {
-				        Point p = a.Position();
+				        Point p = a.WorldPosition();
 				        if (!Visible(p))
 					        return;
 				        GroundEllipse(p,
@@ -1704,7 +1734,7 @@ namespace
 			glow.SetDraw(
 			    [i](Actor& a, Renderer&)
 			    {
-				    Point s = Project(a.Position(), .12f + std::sin(elapsed + i) * .1f);
+				    Point s = Project(a.WorldPosition(), .12f + std::sin(elapsed + i) * .1f);
 				    renderer->SoftEllipse(s.x, s.y, 25, 12, {.3f, 1.5f, 1.35f, .20f});
 				    renderer->Ellipse(s.x, s.y, 2, 2, {.8f, 2.2f, 1.9f, .85f});
 			    });
@@ -1714,7 +1744,7 @@ namespace
 			    .SetDraw(
 			        [](Actor& a, Renderer&)
 			        {
-				        Point p = a.Position();
+				        Point p = a.WorldPosition();
 				        GroundQuad(p.x, p.y, .22f, 2, {.48f, .33f, .19f, 1}, .08f, Material::Wood);
 			        });
 		for (int i = 0; i < 700; ++i)
@@ -1727,9 +1757,9 @@ namespace
 			    .SetDraw(
 			        [i](Actor& a, Renderer&)
 			        {
-				        if (!Visible(a.Position()))
+				        if (!Visible(a.WorldPosition()))
 					        return;
-				        Point s = Project(a.Position());
+				        Point s = Project(a.WorldPosition());
 				        renderer->Ellipse(s.x,
 				                          s.y,
 				                          2,
@@ -1756,7 +1786,7 @@ namespace
 			houses[i].actor.SetDraw(
 			    [i](Actor& a, Renderer&)
 			    {
-				    if (Visible(a.Position()))
+				    if (Visible(a.WorldPosition()))
 					    DrawHouse(houses[i]);
 			    });
 			ShadowActor(houses[i].actor, houses[i].w * .7f, 4.2f);
@@ -1771,7 +1801,7 @@ namespace
 			trees[i].actor.SetDraw(
 			    [i](Actor& a, Renderer&)
 			    {
-				    if (Visible(a.Position()))
+				    if (Visible(a.WorldPosition()))
 					    DrawTree(trees[i]);
 			    });
 			ShadowActor(trees[i].actor, 1.3f * trees[i].size, 4.5f * trees[i].size);
@@ -1786,8 +1816,8 @@ namespace
 			people[i].actor.SetDraw(
 			    [i](Actor& a, Renderer&)
 			    {
-				    if (Visible(a.Position()))
-					    DrawPerson(a.Position(), people[i].coat, false, i);
+				    if (Visible(a.WorldPosition()))
+					    DrawPerson(a.WorldPosition(), people[i].coat, false, i);
 			    });
 			ShadowActor(people[i].actor, .5f, 1.5f);
 		}
@@ -1799,7 +1829,7 @@ namespace
 		playerActor.SetDraw(
 		    [](Actor& a, Renderer&)
 		    {
-			    DrawPerson(a.Position(), {.25f, .47f, .51f, 1}, true, 0);
+			    DrawPerson(a.WorldPosition(), {.25f, .47f, .51f, 1}, true, 0);
 		    });
 		ShadowActor(playerActor, .55f, 1.7f);
 		Actor* relics[] = {&runeActor, &fragmentActor, &shrineActor};
@@ -1814,8 +1844,8 @@ namespace
 			    .SetDraw(
 			        [](Actor& a, Renderer&)
 			        {
-				        if (Visible(a.Position()))
-					        DrawFire(a.Position());
+				        if (Visible(a.WorldPosition()))
+					        DrawFire(a.WorldPosition());
 			        });
 		for (int i = 0; i < 5; ++i)
 		{
@@ -1824,8 +1854,8 @@ namespace
 			ruin.SetDraw(
 			    [i](Actor& a, Renderer&)
 			    {
-				    if (Visible(a.Position()))
-					    Box(a.Position(),
+				    if (Visible(a.WorldPosition()))
+					    Box(a.WorldPosition(),
 					        1.2f,
 					        1.2f,
 					        2.3f + i * .4f,
@@ -1840,7 +1870,7 @@ namespace
 			    .SetDraw(
 			        [i](Actor& a, Renderer&)
 			        {
-				        Point s = Project(a.Position(), 1.8f + std::sin(elapsed * .5f + i));
+				        Point s = Project(a.WorldPosition(), 1.8f + std::sin(elapsed * .5f + i));
 				        renderer->SoftEllipse(s.x, s.y, 5, 5, {1.6f, 1.25f, .50f, .55f});
 			        });
 		Actor& marker = effectActors.AddChild("QuestMarker");
@@ -1854,7 +1884,7 @@ namespace
 		marker.SetDraw(
 		    [](Actor& a, Renderer&)
 		    {
-			    Point target = Project(a.Position(), 3.1f);
+			    Point target = Project(a.WorldPosition(), 3.1f);
 			    if (target.x > 30 && target.x < width - 30 && target.y > 150 &&
 			        target.y < height - 100)
 			    {
@@ -2048,7 +2078,7 @@ namespace
 			renderer->Rect(0, 0, (float)width, (float)height, {.02f, .04f, .05f, .75f});
 			renderer->Text(width * .5f - 160, height * .5f - 50, L"여행을 잠시 멈췄습니다", Gold);
 			renderer->Text(
-			    width * .5f - 160, height * .5f, L"Esc 계속   R 처음부터   Q 종료", Cream);
+			    width * .5f - 160, height * .5f, L"Esc 계속   R 새 게임   Q 종료", Cream);
 		}
 		questJournal.Draw(*renderer, width, height, WorldTravel::Region::Village);
 		renderer->Flush();
@@ -2112,6 +2142,8 @@ namespace
 
 	void Reset()
 	{
+		firstLevel.Reset();
+		inFirstLevel = false;
 		player = VillagePoint({18, 50});
 		camera = player;
 		forestTrail.lastSafe = player;
@@ -2140,7 +2172,7 @@ namespace
 		for (int i = 0; i < (int)(sizeof(animalHomes) / sizeof(animalHomes[0])); ++i)
 			animals.push_back({animalHomes[i], animalHomes[i], i % 3, i * 1.73f, 0, 0, false});
 		ConfigureAnimals();
-		std::fill(std::begin(keys), std::end(keys), false);
+		ClearGameplayInput();
 		Talk(
 		    L"지도 밖의 첫 걸음",
 		    {L"작은 마을 갈대여울. 숲 너머 호수에서 낯선 소리가 들려온다. 오늘은 그 목소리의 흔적을 찾아 떠나 보자.",
@@ -2154,7 +2186,7 @@ namespace
 		if (questJournal.IsOpen())
 		{
 			questJournal.HandleKey(key);
-			std::fill(std::begin(keys), std::end(keys), false);
+			ClearGameplayInput();
 			return;
 		}
 		if (key == 'j')
@@ -2163,7 +2195,7 @@ namespace
 			    (!inFirstLevel || firstLevel.CanOpenJournal()))
 			{
 				questJournal.Open();
-				std::fill(std::begin(keys), std::end(keys), false);
+				ClearGameplayInput();
 			}
 			return;
 		}
@@ -2172,7 +2204,7 @@ namespace
 			if (key == 27)
 			{
 				paused = !paused;
-				std::fill(std::begin(keys), std::end(keys), false);
+				ClearGameplayInput();
 			}
 			else if (paused)
 			{
@@ -2187,7 +2219,7 @@ namespace
 				bool leave = firstLevel.Key(key);
 				if (key == 'i' || key == 'm' || key == 'r' || storyWasOpen ||
 				    firstLevel.IsStoryOpen() || leave)
-					std::fill(std::begin(keys), std::end(keys), false);
+					ClearGameplayInput();
 				else
 					keys[key] = true;
 				if (leave)
@@ -2214,7 +2246,7 @@ namespace
 		if (key == 27)
 		{
 			paused = !paused;
-			std::fill(std::begin(keys), std::end(keys), false);
+			ClearGameplayInput();
 			return;
 		}
 
@@ -2282,7 +2314,7 @@ namespace
 	{
 		if (key == GLFW_KEY_F9)
 		{
-			std::fill(std::begin(keys), std::end(keys), false);
+			ClearGameplayInput();
 			monitorServer.OpenBrowser();
 		}
 	}
@@ -2295,7 +2327,7 @@ namespace
 
 		// Focus loss clears held keys so alt-tab cannot leave the player walking.
 		if (gameWindow && !glfwGetWindowAttrib(gameWindow, GLFW_FOCUSED))
-			std::fill(std::begin(keys), std::end(keys), false);
+			ClearGameplayInput();
 		else if (gameWindow)
 			keys[GameInput::Sprint] = glfwGetKey(gameWindow, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS ||
 			                          glfwGetKey(gameWindow, GLFW_KEY_RIGHT_SHIFT) == GLFW_PRESS;
@@ -2306,7 +2338,7 @@ namespace
 		if (inFirstLevel)
 		{
 			if (firstLevel.Update(realDelta, keys))
-				std::fill(std::begin(keys), std::end(keys), false);
+				ClearGameplayInput();
 			return;
 		}
 
@@ -2354,7 +2386,7 @@ namespace
 	{
 		if (!focused)
 		{
-			std::fill(std::begin(keys), std::end(keys), false);
+			ClearGameplayInput();
 			walking = false;
 		}
 	}
@@ -2371,6 +2403,7 @@ namespace
 	void Close()
 	{
 		monitorServer.Stop();
+		villageModels.Save();
 		delete renderer;
 		renderer = nullptr;
 	}

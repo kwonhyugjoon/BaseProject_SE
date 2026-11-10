@@ -15,6 +15,7 @@
 #include <cassert>
 #include <cstdio>
 #include <numeric>
+#include <cstring>
 #ifdef _WIN32
 #include <windows.h>
 #endif
@@ -114,6 +115,23 @@ int main(int argc, char** argv)
 		Renderer r(width, height);
 		assert(r.IsInitialized());
 		renderer = &r;
+		const std::vector<ModelVertex> model = {{1, 2, .2f, .3f, .4f, .5f, -4, .1f, .2f},
+		                                        {3, 2, .3f, .4f, .5f, .6f, -4, .2f, .3f},
+		                                        {1, 4, .4f, .5f, .6f, .7f, -4, .3f, .4f}};
+		r.SetDrawOffset({2, 3});
+		r.Model({11, 13}, model, {.5f, .6f, .7f, .8f});
+		assert(r.m_Vertices.size() == model.size());
+		for (size_t i = 0; i < model.size(); ++i)
+		{
+			const auto& vertex = r.m_Vertices[i];
+			assert(vertex.x == model[i].x + 13 && vertex.y == model[i].y + 16);
+			assert(vertex.r == model[i].r * .5f && vertex.g == model[i].g * .6f);
+			assert(vertex.b == model[i].b * .7f && vertex.a == model[i].a * .8f);
+			assert(vertex.material == model[i].material && vertex.u == model[i].u &&
+			       vertex.v == model[i].v);
+		}
+		r.m_Vertices.clear();
+		r.SetDrawOffset({0, 0});
 		releasedFont = r.m_FontAtlas;
 		releasedBuffer = r.m_Buffer;
 #ifdef _WIN32
@@ -135,6 +153,38 @@ int main(int argc, char** argv)
 			drawVillage();
 		glFinish();
 		size_t glyphCount = r.m_Glyphs.size(), vertexCapacity = r.m_Vertices.capacity();
+		villageModels.Save();
+		VillageModels reloadedVillage;
+		size_t verifiedModels = 0;
+		auto verifyParts = [&](uint64_t key, const VillageModels::Parts& original)
+		{
+			const auto* loaded = reloadedVillage.Find(key);
+			assert(loaded);
+			for (size_t i = 0; i < original.size(); ++i)
+			{
+				assert(original[i].size() == (*loaded)[i].size());
+				if (!original[i].empty())
+					assert(std::memcmp(original[i].data(),
+					                   (*loaded)[i].data(),
+					                   original[i].size() * sizeof(ModelVertex)) == 0);
+			}
+			++verifiedModels;
+		};
+		for (const auto& house : houses)
+			if (house.model)
+				verifyParts(VillageModels::Key(
+				                {0, house.w, house.d, house.roof.r, house.roof.g, house.roof.b}),
+				            *house.model);
+		for (const auto& tree : trees)
+			if (tree.models)
+				verifyParts(VillageModels::Key({1,
+				                                tree.modelSeed.x,
+				                                tree.modelSeed.y,
+				                                tree.size,
+				                                static_cast<float>(tree.kind)}),
+				            *tree.models);
+		assert(verifiedModels > 0);
+		printf("Village mesh cache verified: %zu model instances.\n", verifiedModels);
 		int atlasX = r.m_FontX, atlasY = r.m_FontY;
 		GLuint atlasTexture = r.m_FontAtlas;
 		auto start = FrameClock::now();

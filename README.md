@@ -45,3 +45,4 @@ Linux는 X11 백엔드와 OpenGL 개발 패키지가 필요하다. Ubuntu/Debian
 - [GLFW 전환과 GPU 폰트 시스템](docs/GLFW_MIGRATION.md)
 - [게임 개발 기준](docs/GAME_DESIGN.md), [10회 개발 계획](docs/DEVELOPMENT_ROADMAP.md)
 - [지역 이동](docs/WORLD_TRAVEL.md), [드워프 이야기](docs/DWARF_STORY.md), [고원과 고룡 이야기](docs/DRAGON_STORY.md)
+- [입력·상태 처리와 모델 캐시 보정](docs/INPUT_CACHE_OPTIMIZATION.md)

@@ -13,12 +13,17 @@ SceneGraph::SceneGraph() : m_Root("Scene")
 
 void SceneGraph::Collect(Actor& actor)
 {
+	if (actor.m_PendingDestroy)
+		return;
 	// The parent was already synchronized by this top-down traversal.
 	actor.Synchronize(false);
 	if (actor.m_Update)
 		m_Traversal.push_back(&actor);
+	if (actor.m_PositionBorrowed)
+		m_BorrowedPositions.push_back(&actor);
 	for (const auto& child : actor.m_Children)
 		Collect(*child);
+	actor.m_TraversalDirty = false;
 }
 
 void SceneGraph::CollectDraw(Actor& actor, ActorLayer inheritedLayer)
@@ -40,8 +45,15 @@ void SceneGraph::CollectDraw(Actor& actor, ActorLayer inheritedLayer)
 
 void SceneGraph::Update(float dt)
 {
-	m_Traversal.clear();
-	Collect(m_Root);
+	if (m_Root.m_TraversalDirty)
+	{
+		m_Traversal.clear();
+		m_BorrowedPositions.clear();
+		Collect(m_Root);
+	}
+	// Borrowed Point references can change without a setter; preserve their propagation.
+	for (Actor* actor : m_BorrowedPositions)
+		actor->Synchronize();
 	// A snapshot defers new nodes until the next update; deletion waits until traversal ends.
 	m_Root.m_Traversing = true;
 	for (Actor* actor : m_Traversal)
@@ -52,7 +64,6 @@ void SceneGraph::Update(float dt)
 		actor->Synchronize();
 	}
 	m_Root.m_Traversing = false;
-	m_Traversal.clear();
 	m_Root.Prune();
 }
 

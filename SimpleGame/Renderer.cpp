@@ -324,18 +324,20 @@ void Renderer::Model(Point position, const std::vector<ModelVertex>& vertices, C
 {
 	position.x += m_DrawOffset.x;
 	position.y += m_DrawOffset.y;
-	size_t begin = m_Vertices.size();
-	m_Vertices.insert(m_Vertices.end(), vertices.begin(), vertices.end());
-	Vertex* appended = m_Vertices.data();
-	for (size_t i = begin; i < m_Vertices.size(); ++i)
+	size_t required = m_Vertices.size() + vertices.size();
+	if (required > m_Vertices.capacity())
+		m_Vertices.reserve(std::max(required, m_Vertices.capacity() * 2));
+	for (const Vertex& vertex : vertices)
 	{
-		Vertex& vertex = appended[i];
-		vertex.x += position.x;
-		vertex.y += position.y;
-		vertex.r *= tint.r;
-		vertex.g *= tint.g;
-		vertex.b *= tint.b;
-		vertex.a *= tint.a;
+		m_Vertices.push_back({vertex.x + position.x,
+		                      vertex.y + position.y,
+		                      vertex.r * tint.r,
+		                      vertex.g * tint.g,
+		                      vertex.b * tint.b,
+		                      vertex.a * tint.a,
+		                      vertex.material,
+		                      vertex.u,
+		                      vertex.v});
 	}
 }
 

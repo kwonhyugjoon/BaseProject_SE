@@ -48,6 +48,9 @@
     <ClInclude Include="LevelModels.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
+    <ClInclude Include="VillageModels.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
     <ClInclude Include="FirstLevel.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
@@ -89,6 +92,9 @@
       <Filter>소스 파일</Filter>
     </ClCompile>
     <ClCompile Include="LevelModels.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="VillageModels.cpp">
       <Filter>소스 파일</Filter>
     </ClCompile>
     <ClCompile Include="FirstLevel.cpp">

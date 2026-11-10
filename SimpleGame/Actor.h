@@ -78,6 +78,8 @@ class Actor
 
 	void SetUpdate(UpdateFunction update)
 	{
+		if (static_cast<bool>(m_Update) != static_cast<bool>(update))
+			MarkTraversalDirty();
 		m_Update = std::move(update);
 	}
 
@@ -98,12 +100,14 @@ class Actor
 	bool Traversing() const;
 	void Prune();
 	void MarkForPrune();
+	void MarkTraversalDirty();
 	std::string m_Name;
 	Actor* m_Parent = nullptr;
 	Point m_Position, m_SynchronizedPosition;
 	ActorLayer m_Layer;
 	bool m_Visible = true, m_Enabled = true;
 	bool m_NeedsPrune = false;
+	bool m_TraversalDirty = true, m_PositionBorrowed = false;
 	bool m_OverrideLayer = true, m_PendingDestroy = false, m_Traversing = false,
 	     m_Protected = false;
 	std::vector<std::unique_ptr<Actor>> m_Children;

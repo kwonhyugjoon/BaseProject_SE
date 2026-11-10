@@ -16,6 +16,7 @@ Actor& Actor::AddChild(std::string name, Point localPosition)
 	child->m_Parent = this;
 	child->m_OverrideLayer = false;
 	m_Children.push_back(std::move(child));
+	MarkTraversalDirty();
 	return *m_Children.back();
 }
 
@@ -29,6 +30,7 @@ bool Actor::RemoveChild(Actor& child)
 	                          });
 	if (found == m_Children.end() || child.m_Protected)
 		return false;
+	MarkTraversalDirty();
 	if (Traversing())
 	{
 		child.m_PendingDestroy = true;
@@ -74,11 +76,21 @@ void Actor::Prune()
 
 void Actor::MarkForPrune()
 {
+	MarkTraversalDirty();
 	if (m_NeedsPrune)
 		return;
 	m_NeedsPrune = true;
 	if (m_Parent)
 		m_Parent->MarkForPrune();
+}
+
+void Actor::MarkTraversalDirty()
+{
+	if (m_TraversalDirty)
+		return;
+	m_TraversalDirty = true;
+	if (m_Parent)
+		m_Parent->MarkTraversalDirty();
 }
 
 Actor* Actor::Find(const std::string& name)
@@ -119,6 +131,11 @@ void Actor::Synchronize(bool synchronizeParent)
 Point& Actor::Position()
 {
 	Synchronize();
+	if (!m_PositionBorrowed)
+	{
+		m_PositionBorrowed = true;
+		MarkTraversalDirty();
+	}
 	return m_Position;
 }
 
