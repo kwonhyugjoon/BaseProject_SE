@@ -40,7 +40,7 @@ class FirstLevel
 
 	bool IsStoryOpen() const
 	{
-		return !m_Dialogue.empty() || m_ChoosingDwarf || m_ChoosingDragon;
+		return !m_Dialogue.empty() || m_ChoosingDwarf || m_ChoosingDragon || m_ChoosingCoast;
 	}
 
 	Exit RequestedExit() const
@@ -80,6 +80,8 @@ class FirstLevel
 		ScaleLizard,
 		WindSprite,
 		Emberling,
+		TidalCrab,
+		EchoJelly,
 		Count
 	};
 
@@ -129,7 +131,9 @@ class FirstLevel
 		DragonStart,
 		DragonTrace,
 		DragonAudience,
-		DragonMemory
+		DragonMemory,
+		CoastDream,
+		TidalShrine
 	};
 
 	QuestJournal& m_Journal;
@@ -156,6 +160,7 @@ class FirstLevel
 	StoryAction m_StoryAction = StoryAction::None;
 	bool m_ChoosingDwarf = false;
 	bool m_ChoosingDragon = false;
+	bool m_ChoosingCoast = false;
 	int m_TrialWaves = 0;
 	float m_TrialWindup = 0;
 	Point m_TrialTarget = {};
@@ -166,7 +171,7 @@ class FirstLevel
 	LevelModels m_Models;
 	Point m_Camera = WorldTravel::NearGate, m_Aim = {1, 0};
 	int m_Level = 1, m_Experience = 0, m_Hp = 100, m_Coins = 0, m_Shards = 0;
-	std::array<int, 6> m_Materials = {};
+	std::array<int, 8> m_Materials = {};
 	int m_Facing = 1, m_Kills = 0, m_FlowTarget = -1;
 	uint32_t m_Seed = 1, m_Random = 1;
 	float m_Time = 0, m_AttackCooldown = 0, m_Swing = 0, m_HitCooldown = 0, m_MessageTime = 0;
@@ -197,6 +202,8 @@ class FirstLevel
 	void BuildScene();
 	void BuildDwarfScene();
 	void BuildDragonScene();
+	void BuildCoastScene();
+	void InteractCoast();
 	void InteractDragon();
 	void StartDragonTrial();
 	void UpdateDragonTrial(float dt);

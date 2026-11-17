@@ -38,6 +38,14 @@ class QuestJournal
 		Complete
 	};
 
+	enum class CoastStage
+	{
+		Dream,
+		Shrine,
+		Choice,
+		Complete
+	};
+
 	QuestJournal();
 	void Reset();
 	bool CompleteStep(Stage expected);
@@ -62,6 +70,11 @@ class QuestJournal
 	DragonStage DragonProgress() const;
 	int DragonApproach() const;
 	int DragonChoice() const;
+	bool HearCoastDream();
+	bool ReadTidalShrine();
+	bool ChooseCoast(int value);
+	CoastStage CoastProgress() const;
+	int CoastChoice() const;
 	bool CanTravel(WorldTravel::Region from, WorldTravel::Region to) const;
 	const Stage& TutorialStage() const;
 	const int& LakeChoice() const;
@@ -83,6 +96,8 @@ class QuestJournal
 	int m_DwarfChoice = 0;
 	DragonStage m_DragonStage = DragonStage::Meeting;
 	int m_DragonApproach = 0;
+	CoastStage m_CoastStage = CoastStage::Dream;
+	int m_CoastChoice = 0;
 	std::array<bool, RegionCount> m_Visited = {}, m_Investigated = {};
 	std::vector<std::pair<WorldTravel::Region, WorldTravel::Region>> m_Routes;
 	bool m_Open = false;

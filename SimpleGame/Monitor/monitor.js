@@ -106,7 +106,7 @@ function render(snapshot) {
     const sceneName = {tutorial: "갈대여울", first_level: "옛 드워프 교역로", basin: "솔바람 분지",
         echo_hall: "메아리 숲길", stone_ridge: "돌등성이 전초지", mist_shore: "안개 호숫가",
         dwarf_mine: "깊은돌 폐광길", dwarf_city: "깊은돌 도시 앞마당",
-        highlands: "바람등 고원", dragon_roost: "잿빛 날개 쉼터"};
+        highlands: "바람등 고원", dragon_roost: "잿빛 날개 쉼터", tidal_ruins: "침수 신전"};
     byId("scene").textContent = `${sceneName[snapshot.scene] || snapshot.scene}${snapshot.paused ? " / 일시정지" : ""}`;
     byId("updated").textContent = `마지막 상태: ${new Date(snapshot.sampledAt).toLocaleTimeString("ko-KR")}`;
     renderVillages(snapshot);

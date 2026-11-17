@@ -29,6 +29,8 @@ void QuestJournal::Reset()
 	m_DwarfChoice = 0;
 	m_DragonStage = DragonStage::Meeting;
 	m_DragonApproach = 0;
+	m_CoastStage = CoastStage::Dream;
+	m_CoastChoice = 0;
 	m_Visited.fill(false);
 	m_Investigated.fill(false);
 	m_Routes.clear();
@@ -210,8 +212,46 @@ int QuestJournal::DragonChoice() const
 	return m_DragonStage == DragonStage::Complete ? m_DragonApproach : 0;
 }
 
+bool QuestJournal::HearCoastDream()
+{
+	if (m_Stage != Stage::Complete || m_CoastStage != CoastStage::Dream ||
+	    !Visited(Region::MistShore))
+		return false;
+	m_CoastStage = CoastStage::Shrine;
+	return true;
+}
+
+bool QuestJournal::ReadTidalShrine()
+{
+	if (m_CoastStage != CoastStage::Shrine || !Visited(Region::TidalRuins))
+		return false;
+	m_CoastStage = CoastStage::Choice;
+	return true;
+}
+
+bool QuestJournal::ChooseCoast(int value)
+{
+	if (m_CoastStage != CoastStage::Choice || (value != 1 && value != 2))
+		return false;
+	m_CoastChoice = value;
+	m_CoastStage = CoastStage::Complete;
+	return true;
+}
+
+QuestJournal::CoastStage QuestJournal::CoastProgress() const
+{
+	return m_CoastStage;
+}
+
+int QuestJournal::CoastChoice() const
+{
+	return m_CoastChoice;
+}
+
 bool QuestJournal::CanTravel(Region from, Region to) const
 {
+	if (from == Region::MistShore && to == Region::TidalRuins)
+		return m_CoastStage >= CoastStage::Shrine;
 	if ((from == Region::StoneRidge && to == Region::DragonRoost) ||
 	    (from == Region::DragonRoost && to == Region::StoneRidge))
 		return DragonChoice() == 1 || DragonChoice() == 2;
@@ -239,6 +279,8 @@ Region QuestJournal::NextDestination() const
 {
 	if (m_Stage != Stage::Complete)
 		return Region::Village;
+	if (m_CoastStage == CoastStage::Shrine || m_CoastStage == CoastStage::Choice)
+		return Region::TidalRuins;
 	if (m_DragonStage == DragonStage::Trace)
 		return Region::Highlands;
 	if (m_DragonStage >= DragonStage::Audience && m_DragonStage < DragonStage::Complete)
@@ -252,13 +294,19 @@ Region QuestJournal::NextDestination() const
 			return region;
 	if (m_DwarfStage == DwarfStage::Meeting)
 		return Region::StoneRidge;
-	return m_DragonStage == DragonStage::Meeting ? Region::Highlands : Region::None;
+	if (m_DragonStage == DragonStage::Meeting)
+		return Region::Highlands;
+	return m_CoastStage == CoastStage::Dream ? Region::MistShore : Region::None;
 }
 
 const wchar_t* QuestJournal::Objective() const
 {
 	if (m_Stage != Stage::Complete)
 		return TutorialObjectives[static_cast<int>(m_Stage)];
+	if (m_CoastStage == CoastStage::Shrine)
+		return L"침수 신전 중앙에서 물결의 기록 조사하기";
+	if (m_CoastStage == CoastStage::Choice)
+		return L"침수 신전의 기록대에서 응답을 전할지 결정하기";
 	if (m_DragonStage == DragonStage::Trace)
 		return L"바람등 고원 중앙의 벗겨진 비늘과 옛 경계문 조사하기";
 	if (m_DragonStage == DragonStage::Audience)
@@ -284,11 +332,12 @@ const wchar_t* QuestJournal::Objective() const
 	case Region::StoneRidge:
 		return L"돌등성이 전초지의 드워프 표식 기록하기";
 	case Region::MistShore:
-		return L"안개 호숫가의 물결 표식 기록하기";
+		return Investigated(Region::MistShore) ? L"안개 호숫가의 등대지기 나루와 대화하기"
+		                                       : L"안개 호숫가의 물결 표식 기록하기";
 	case Region::Highlands:
 		return L"바람등 고원의 길잡이 세라와 대화하기";
 	default:
-		return L"드워프와 고룡의 기록 완료 · 다음 여행은 해안과 미지의 존재로 이어집니다";
+		return L"산맥·고원·해안의 기록 완료";
 	}
 }
 
@@ -338,6 +387,8 @@ std::vector<std::wstring> QuestJournal::Lines(int tab, Region current) const
 		lines.push_back(Objective());
 		lines.push_back(
 		    L"고원은 분지 남쪽 길로 갈 수 있습니다. 드워프 이야기와 별개로 먼저 탐험해도 됩니다.");
+		if (m_Stage == Stage::Complete && m_CoastStage == CoastStage::Dream)
+			lines.push_back(L"안개 호숫가의 나루에게 같은 꿈 이야기를 먼저 들을 수 있습니다.");
 		auto route = RouteToNext(current);
 		if (route.size() == 1)
 			lines.push_back(L"이 지역에 목표가 있습니다. 가까이에서 E로 조사·대화하세요.");
@@ -412,6 +463,17 @@ std::vector<std::wstring> QuestJournal::Lines(int tab, Region current) const
 			lines.push_back(
 			    L"고룡의 기억: 봉인은 침입자를 가두는 벽이 아니라 서로의 응답을 늦추는 경계다. 통로를 열기 전에 양쪽의 뜻을 확인해야 한다.");
 		}
+		if (m_CoastStage >= CoastStage::Shrine)
+			lines.push_back(
+			    L"나루의 증언: 해안 주민들은 같은 꿈에서 물 아래 누군가가 자기 이름을 되풀이하는 소리를 들었다.");
+		if (m_CoastStage >= CoastStage::Choice)
+			lines.push_back(
+			    L"신전의 기록: 옛 사람들은 물결에 말을 담고 기다리는 동안 돌아갈 길을 남겼다.");
+		if (m_CoastChoice)
+			lines.push_back(
+			    m_CoastChoice == 1
+			        ? L"해안 선택: 이름 대신 인사를 전했다. 신전에 응답의 빛이 남았다."
+			        : L"해안 선택: 전달 고리를 잠재웠다. 해안은 조용해졌고 왕래는 계속된다.");
 	}
 	else
 	{

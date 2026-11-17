@@ -6,6 +6,7 @@
 #include <cmath>
 #include <queue>
 #include <iostream>
+#include <iterator>
 
 namespace
 {
@@ -44,7 +45,9 @@ const FirstLevel::EnemyStats& FirstLevel::Stats(EnemyKind kind)
 	    {56, 10, 36, 6, 1.1f, 3.6f, 1.3f, 2.8f, {.46f, .52f, .50f, 1}},
 	    {46, 8, 30, 6, 1.8f, 5.f, 1.f, 2.6f, {.30f, .48f, .51f, 1}},
 	    {30, 6, 28, 5, 2.3f, 7.f, 1.1f, 2.5f, {.58f, .85f, .89f, 1}},
-	    {34, 8, 32, 6, 1.4f, 6.f, 1.4f, 4.5f, {.94f, .38f, .13f, 1}}};
+	    {34, 8, 32, 6, 1.4f, 6.f, 1.4f, 4.5f, {.94f, .38f, .13f, 1}},
+	    {44, 9, 31, 5, 1.5f, 2.1f, .95f, 2.3f, {.47f, .62f, .49f, 1}},
+	    {30, 7, 29, 5, 1.8f, 6.f, 1.25f, 4.1f, {.47f, .78f, .94f, 1}}};
 	return stats[static_cast<int>(kind)];
 }
 
@@ -60,7 +63,9 @@ void FirstLevel::CaptureMonitorState(MonitorSnapshot& snapshot) const
 	                       "guardian",
 	                       "scale_lizard",
 	                       "wind_sprite",
-	                       "emberling"};
+	                       "emberling",
+	                       "tidal_crab",
+	                       "echo_jelly"};
 	const char* names[] = {"슬라임",
 	                       "도적",
 	                       "궁수",
@@ -70,7 +75,9 @@ void FirstLevel::CaptureMonitorState(MonitorSnapshot& snapshot) const
 	                       "고장 난 석재 수호체",
 	                       "능선 비늘도마뱀",
 	                       "바람 정령",
-	                       "열맥 불씨"};
+	                       "열맥 불씨",
+	                       "조수 집게",
+	                       "메아리 해파리"};
 	for (size_t i = 0; i < snapshot.mobs.size(); ++i)
 	{
 		snapshot.mobs[i] = {};
@@ -89,14 +96,23 @@ void FirstLevel::CaptureMonitorState(MonitorSnapshot& snapshot) const
 	                        Region::DwarfCity,
 	                        Region::DwarfCity,
 	                        Region::Highlands,
-	                        Region::DragonRoost};
+	                        Region::DragonRoost,
+	                        Region::MistShore};
 	const Point positions[] = {
-	    {55, 41}, WorldTravel::SurveyStone, {57, 43}, {55, 41}, WorldTravel::SurveyStone};
-	const char* ids[] = {
-	    "Dwarf/Torvik", "Dwarf/Bryn", "Dwarf/Dorna", "Highlands/Sera", "Dragon/Arken"};
-	const char* labels[] = {
-	    "파수꾼 토르빅", "기록관 브린", "대장장이 도르나", "길잡이 세라", "고룡 아르켄"};
-	for (int i = 0; i < 5; ++i)
+	    {55, 41}, WorldTravel::SurveyStone, {57, 43}, {55, 41}, WorldTravel::SurveyStone, {55, 41}};
+	const char* ids[] = {"Dwarf/Torvik",
+	                     "Dwarf/Bryn",
+	                     "Dwarf/Dorna",
+	                     "Highlands/Sera",
+	                     "Dragon/Arken",
+	                     "Coast/Naru"};
+	const char* labels[] = {"파수꾼 토르빅",
+	                        "기록관 브린",
+	                        "대장장이 도르나",
+	                        "길잡이 세라",
+	                        "고룡 아르켄",
+	                        "등대지기 나루"};
+	for (size_t i = 0; i < std::size(areas); ++i)
 	{
 		bool active =
 		    m_Initialized && m_Region == areas[i] && snapshot.scene == WorldTravel::Key(areas[i]);
@@ -104,7 +120,7 @@ void FirstLevel::CaptureMonitorState(MonitorSnapshot& snapshot) const
 		MonitorNpc npc;
 		npc.id = ids[i];
 		npc.name = labels[i];
-		npc.villageId = i < 3 ? "deepstone" : "highlands";
+		npc.villageId = i < 3 ? "deepstone" : i < 5 ? "highlands" : "mist_shore";
 		npc.routine = i == 2 ? "대장간 안내" : "기록과 길 안내";
 		npc.state = !active ? "inactive_area"
 		            : IsStoryOpen() &&
@@ -153,6 +169,23 @@ void FirstLevel::CaptureMonitorState(MonitorSnapshot& snapshot) const
 	    : m_Journal.DragonChoice()    ? "고룡이 돌등성이 바람길을 열었다."
 	                                  : "비늘은 전쟁이 아니라 탈피의 흔적이라는 이야기가 돈다."};
 	snapshot.villages.push_back(highlands);
+
+	MonitorVillage coast;
+	coast.id = "mist_shore";
+	coast.name = "안개 호숫가";
+	coast.population = 1;
+	const int coastChoice = m_Journal.CoastChoice();
+	coast.mood = coastChoice == 1   ? "응답을 기다림"
+	             : coastChoice == 2 ? "잔잔함"
+	                                : "같은 꿈에 술렁임";
+	coast.disposition = coastChoice == 1   ? "조심스러운 접촉"
+	                    : coastChoice == 2 ? "연결 중단"
+	                                       : "기록을 조사 중";
+	coast.rumorsImplemented = true;
+	coast.rumors = {coastChoice == 1   ? "썰물의 신전에서 짧은 인사가 돌아왔다."
+	                : coastChoice == 2 ? "등대 아래에 닿던 울림이 멎었다."
+	                                   : "주민들이 같은 꿈에서 물 아래의 목소리를 들었다."};
+	snapshot.villages.push_back(coast);
 }
 
 int FirstLevel::AttackPower() const
@@ -320,7 +353,8 @@ void FirstLevel::Generate()
 		     tile == Tile::Water) ||
 		    (m_Region == Region::DwarfMine && (tile == Tile::Water || tile == Tile::Tree)))
 			tile = Tile::Rock;
-		else if (m_Region == Region::MistShore && tile == Tile::Rock)
+		else if ((m_Region == Region::MistShore || m_Region == Region::TidalRuins) &&
+		         tile == Tile::Rock)
 			tile = Tile::Water;
 	}
 	m_Enemies.clear();
@@ -352,6 +386,7 @@ void FirstLevel::Generate()
 		static const EnemyKind mine[] = {EnemyKind::Beetle, EnemyKind::Guardian};
 		static const EnemyKind highland[] = {
 		    EnemyKind::ScaleLizard, EnemyKind::WindSprite, EnemyKind::Emberling};
+		static const EnemyKind shore[] = {EnemyKind::TidalCrab, EnemyKind::EchoJelly};
 		EnemyKind kind;
 		if (WorldTravel::IsPassage(m_Region))
 			kind = road[m_Enemies.size() % 3];
@@ -361,6 +396,8 @@ void FirstLevel::Generate()
 			kind = mine[m_Enemies.size() % 2];
 		else if (m_Region == Region::Highlands)
 			kind = highland[m_Enemies.size() % 3];
+		else if (m_Region == Region::MistShore || m_Region == Region::TidalRuins)
+			kind = shore[m_Enemies.size() % 2];
 		else
 		{
 			kind = static_cast<EnemyKind>(m_Enemies.size() % 4);
@@ -376,7 +413,9 @@ void FirstLevel::Generate()
 		                       "Guardian/",
 		                       "ScaleLizard/",
 		                       "WindSprite/",
-		                       "Emberling/"};
+		                       "Emberling/",
+		                       "TidalCrab/",
+		                       "EchoJelly/"};
 		Actor& actor = m_EnemyActors.AddChild(
 		    names[static_cast<int>(kind)] + std::to_string(m_Enemies.size()), p);
 		m_Enemies.emplace_back(actor, p, kind);
@@ -420,7 +459,7 @@ void FirstLevel::Reset()
 	m_Dialogue.clear();
 	m_DialoguePage = 0;
 	m_StoryAction = StoryAction::None;
-	m_ChoosingDwarf = m_ChoosingDragon = m_Map = m_Stats = m_Walking = false;
+	m_ChoosingDwarf = m_ChoosingDragon = m_ChoosingCoast = m_Map = m_Stats = m_Walking = false;
 	m_TrialWaves = 0;
 	m_TrialWindup = 0;
 	m_Message.clear();
@@ -462,6 +501,7 @@ void FirstLevel::Begin(uint32_t seed, bool resetProgress, Region region, Region 
 	m_DialoguePage = 0;
 	m_ChoosingDwarf = false;
 	m_ChoosingDragon = false;
+	m_ChoosingCoast = false;
 	m_TrialWaves = 0;
 	m_StoryAction = StoryAction::None;
 	Generate();
@@ -475,7 +515,8 @@ bool FirstLevel::SafeExit(Point position, float margin) const
 {
 	if (m_Region == Region::DwarfCity || m_Region == Region::DragonRoost)
 		return true;
-	if ((m_Region == Region::StoneRidge || m_Region == Region::Highlands) &&
+	if ((m_Region == Region::StoneRidge || m_Region == Region::Highlands ||
+	     m_Region == Region::MistShore) &&
 	    Distance(position, {55, 41}) <= margin)
 		return true;
 	for (const auto& exit : WorldTravel::Exits(m_Region))
@@ -601,7 +642,8 @@ void FirstLevel::Attack()
 		if (!enemy.actor.IsEnabled() || enemy.hp <= 0 || distance > 2.6f ||
 		    facing < -.15f * distance || !ClearLine(m_Player, enemy.position))
 			continue;
-		int armor = (enemy.kind == EnemyKind::Beetle || enemy.kind == EnemyKind::ScaleLizard) &&
+		int armor = (enemy.kind == EnemyKind::Beetle || enemy.kind == EnemyKind::ScaleLizard ||
+		             enemy.kind == EnemyKind::TidalCrab) &&
 		                    enemy.windup <= 0
 		                ? 3
 		                : 0;
@@ -627,13 +669,17 @@ void FirstLevel::Attack()
 			               : enemy.kind == EnemyKind::ScaleLizard ? 3
 			               : enemy.kind == EnemyKind::WindSprite  ? 4
 			               : enemy.kind == EnemyKind::Emberling   ? 5
+			               : enemy.kind == EnemyKind::TidalCrab   ? 6
+			               : enemy.kind == EnemyKind::EchoJelly   ? 7
 			                                                      : 0;
 			LevelModel lootModels[] = {LevelModel::TrailLoot,
 			                           LevelModel::OreLoot,
 			                           LevelModel::PartsLoot,
 			                           LevelModel::ScaleLoot,
 			                           LevelModel::WindLoot,
-			                           LevelModel::EmberLoot};
+			                           LevelModel::EmberLoot,
+			                           LevelModel::ShellLoot,
+			                           LevelModel::TideLoot};
 			ModelActor(drop, lootModels[material]);
 			m_Drops.push_back({&drop, Stats(enemy.kind).coins, 1, material});
 			++m_Kills;
@@ -701,6 +747,16 @@ bool FirstLevel::Key(unsigned char key)
 		}
 		return false;
 	}
+	if (m_ChoosingCoast)
+	{
+		if ((key == '1' || key == '2') && m_Journal.ChooseCoast(key - '0'))
+		{
+			m_ChoosingCoast = false;
+			GainExperience(75);
+			InteractCoast();
+		}
+		return false;
+	}
 	if (!m_Dialogue.empty())
 	{
 		if ((key == 'e' || key == ' ') && ++m_DialoguePage == m_Dialogue.size())
@@ -731,7 +787,9 @@ bool FirstLevel::Key(unsigned char key)
 			if (!m_Journal.CanTravel(m_Region, destination))
 			{
 				Message(
-				    destination == Region::DragonRoost && m_Region == Region::Highlands
+				    destination == Region::TidalRuins
+				        ? L"밀물에 입구가 잠겼습니다. 호숫가의 등대지기 나루에게 먼저 이야기하세요."
+				    : destination == Region::DragonRoost && m_Region == Region::Highlands
 				        ? L"쉼터의 표식이 흐릿합니다. 길잡이와 대화하고 중앙의 경계문을 먼저 조사하세요."
 				    : destination == Region::DragonRoost || m_Region == Region::DragonRoost
 				        ? L"고룡의 바람길은 아직 닫혀 있습니다. 협상이나 시험 뒤 기억을 들으면 열립니다."
@@ -755,6 +813,8 @@ bool FirstLevel::Key(unsigned char key)
 		{
 			if (m_Region == Region::Highlands || m_Region == Region::DragonRoost)
 				InteractDragon();
+			else if (m_Region == Region::MistShore || m_Region == Region::TidalRuins)
+				InteractCoast();
 			else
 				InteractStory();
 			return false;
@@ -803,7 +863,9 @@ void FirstLevel::UpdatePlayer(float dt)
 		m_Walking = false;
 		m_FlowTarget = -1;
 		m_HitCooldown = std::max(m_HitCooldown, .6f);
-		Message(WorldTravel::IsPassage(m_Region)
+		Message(m_Region == Region::TidalRuins
+		            ? L"물안개 속에서 길을 놓쳐 익숙한 석판으로 돌아왔습니다."
+		        : WorldTravel::IsPassage(m_Region)
 		            ? L"표식 없는 샛길에서 방향을 잃고 헤매다 익숙한 갈림길로 돌아왔습니다."
 		            : L"숲에서 길을 잃고 한참 헤매다 익숙한 길로 돌아왔습니다.");
 		return;
@@ -873,9 +935,9 @@ void FirstLevel::UpdateEnemy(Enemy& enemy, float dt)
 		if (enemy.windup <= 0)
 		{
 			enemy.cooldown = stats.cooldown;
-			if (enemy.kind == EnemyKind::Emberling)
+			if (enemy.kind == EnemyKind::Emberling || enemy.kind == EnemyKind::EchoJelly)
 			{
-				enemy.heat = 3;
+				enemy.heat = enemy.kind == EnemyKind::EchoJelly ? 2.f : 3.f;
 				return;
 			}
 			bool ranged = enemy.kind == EnemyKind::Archer || enemy.kind == EnemyKind::Priest ||
@@ -958,7 +1020,8 @@ void FirstLevel::UpdateEnemy(Enemy& enemy, float dt)
 	}
 	// Ranged enemies retreat when approached, without crossing blocked cells.
 	if ((enemy.kind == EnemyKind::Archer || enemy.kind == EnemyKind::Priest ||
-	     enemy.kind == EnemyKind::WindSprite || enemy.kind == EnemyKind::Emberling) &&
+	     enemy.kind == EnemyKind::WindSprite || enemy.kind == EnemyKind::Emberling ||
+	     enemy.kind == EnemyKind::EchoJelly) &&
 	    distance < 3 && distance > .01f)
 	{
 		Point previous = enemy.position;
@@ -1049,6 +1112,10 @@ LevelModel FirstLevel::EnemyModel(EnemyKind kind) const
 		return LevelModel::WindSprite;
 	case EnemyKind::Emberling:
 		return LevelModel::Emberling;
+	case EnemyKind::TidalCrab:
+		return LevelModel::TidalCrab;
+	case EnemyKind::EchoJelly:
+		return LevelModel::EchoJelly;
 	default:
 		return LevelModel::Slime;
 	}
@@ -1082,11 +1149,92 @@ void FirstLevel::BuildDwarfScene()
 
 Point FirstLevel::StoryTarget() const
 {
+	if (m_Region == Region::MistShore && !m_Journal.Investigated(m_Region))
+		return WorldTravel::SurveyStone;
 	if (m_DragonTrace && m_Journal.DragonProgress() == QuestJournal::DragonStage::Trace)
 		return m_DragonTrace->WorldPosition();
 	if (m_StoryContact && (m_Region != Region::StoneRidge || m_Journal.Investigated(m_Region)))
 		return m_StoryContact->WorldPosition();
 	return WorldTravel::SurveyStone;
+}
+
+void FirstLevel::BuildCoastScene()
+{
+	if (m_Region == Region::MistShore)
+	{
+		m_StoryContact = &m_StaticActors.AddChild("Coast/Naru", {55, 41});
+		m_StoryContact->SetDraw(
+		    [this](Actor& actor, Renderer& r)
+		    {
+			    Point p = Project(actor.WorldPosition(), m_Width, m_Height);
+			    r.Character(p.x, p.y, 1, 8, {.31f, .49f, .56f, 1});
+		    });
+		ModelActor(m_StaticActors.AddChild("Coast/Beacon", {55, 39}), LevelModel::CoastBeacon);
+	}
+	else if (m_Region == Region::TidalRuins)
+	{
+		m_StoryContact = &m_StaticActors.AddChild("Coast/Shrine", WorldTravel::SurveyStone);
+		ModelActor(*m_StoryContact, LevelModel::TidalShrine);
+		m_StoryContact->AddChild("Coast/Reply")
+		    .SetDraw(
+		        [this](Actor& actor, Renderer& r)
+		        {
+			        if (m_Journal.CoastChoice() != 1)
+				        return;
+			        Point p = Project(actor.WorldPosition(), m_Width, m_Height);
+			        float light = .58f + .22f * std::sin(m_Time * 2);
+			        r.SoftEllipse(p.x, p.y - 37, 26, 20, {.23f, .80f, 1.35f, light});
+			        r.Ellipse(p.x, p.y - 37, 5, 6, {.69f, 1.04f, 1.35f, 1});
+		        });
+	}
+}
+
+void FirstLevel::InteractCoast()
+{
+	using Stage = QuestJournal::CoastStage;
+	const auto stage = m_Journal.CoastProgress();
+	const int choice = m_Journal.CoastChoice();
+	m_DialoguePage = 0;
+	m_StoryAction = StoryAction::None;
+	if (m_Region == Region::MistShore)
+	{
+		if (m_Journal.TutorialStage() != QuestJournal::Stage::Complete)
+			m_Dialogue = {
+			    L"등대지기 나루: 갈대여울에서 맺은 이야기를 마저 전하고 와. 미라의 꿈과 여기의 꿈을 나란히 놓고 보고 싶어."};
+		else if (stage == Stage::Dream)
+		{
+			m_Dialogue = {
+			    L"등대지기 나루: 물가의 집마다 같은 꿈을 꿨어. 어둠 속 누군가가 내 이름을 불렀는데, 깨어 보니 이웃도 제 이름을 들었더라고.",
+			    m_Journal.LakeChoice() == 1
+			        ? L"나루: 갈대여울에서 네가 울린 종소리도 꿈에 섞였어. 우리 쪽 목소리가 물길을 따라 건너가기도 하는 모양이야."
+			        : L"나루: 갈대여울의 종을 감싸자 꿈의 소리가 잦아들었대. 그때부터 목소리보다 물을 내어 주는 석문의 모습이 또렷해졌어.",
+			    L"나루: 썰물길을 열어 둘게. 호숫가 동쪽 석문을 따라가면 침수 신전이야. 중앙 기록대에서 그 목소리를 적어 와 줘."};
+			m_StoryAction = StoryAction::CoastDream;
+		}
+		else
+			m_Dialogue = {
+			    choice == 1
+			        ? L"나루: 이제 꿈에서 이름을 부르는 대신 짧게 인사하고 기다려. 듣고 싶을 때만 귀를 기울일 수 있어."
+			    : choice == 2
+			        ? L"나루: 꿈은 조용해졌어. 남은 기록은 등대에서 함께 살펴볼게. 신전에서 오는 길은 열어 두었어."
+			        : L"나루: 조수 집게가 두 집게를 들면 뒤로 물러서. 해파리의 파란 원도 자리를 옮기면 피할 수 있어."};
+		return;
+	}
+	if (stage == Stage::Shrine)
+	{
+		m_Dialogue = {
+		    L"신전의 석판: 우리는 물 위에서 잠들고 아래에서 깨어났다. 밀물에 말을 건네고, 썰물에 돌아올 길을 남겼다.",
+		    L"기록대의 두 홈이 물을 밀어 올린다. 한쪽이 너의 이름을 흉내 내다 멈춘다. 다른 쪽은 그 소리의 간격을 고르고 있다.",
+		    L"누가 응답하는지는 알 수 없다. 이름을 주지 않고 짧은 인사를 남기거나, 전달 고리를 닫아 소리가 더 건너오지 않게 할 수 있다."};
+		m_StoryAction = StoryAction::TidalShrine;
+	}
+	else if (stage == Stage::Choice)
+		m_ChoosingCoast = true;
+	else if (stage == Stage::Complete)
+		m_Dialogue = {
+		    choice == 1
+		        ? L"이름 없는 인사를 전했다. 한 박자 뒤에 또 한 번의 울림이 돌아온다. 네 목소리를 되풀이한 소리와는 결이 달랐다."
+		        : L"전달 고리를 돌리자 목소리가 멀어진다. 입구의 썰물 표식은 그대로 남아 익숙한 길을 가리킨다."};
 }
 
 void FirstLevel::InteractStory()
@@ -1187,6 +1335,10 @@ void FirstLevel::FinishStory()
 		            ? L"고룡과 거리 두기 · 고원으로 돌아가는 길은 유지됩니다."
 		            : L"고룡의 기억 기록 · 돌등성이로 향하는 바람길이 열렸습니다.");
 	}
+	else if (m_StoryAction == StoryAction::CoastDream && m_Journal.HearCoastDream())
+		Message(L"나루의 꿈 기록 · 썰물길이 열렸습니다. 동쪽 출입구를 확인하세요.");
+	else if (m_StoryAction == StoryAction::TidalShrine && m_Journal.ReadTidalShrine())
+		m_ChoosingCoast = true;
 	m_StoryAction = StoryAction::None;
 }
 
@@ -1245,7 +1397,7 @@ void FirstLevel::ModelActor(Actor& actor, LevelModel model, int enemy)
 		    }
 		    else
 		    {
-			    if (model == LevelModel::WindSprite)
+			    if (model == LevelModel::WindSprite || model == LevelModel::EchoJelly)
 				    s.y -= 5 + std::sin(m_Time * 3 + node.WorldPosition().x) * 4;
 			    if (enemy >= 0 && m_Enemies[enemy].moving)
 				    s.y -=
@@ -1279,19 +1431,30 @@ void FirstLevel::ModelActor(Actor& actor, LevelModel model, int enemy)
 			        foe.kind == EnemyKind::Archer || foe.kind == EnemyKind::Priest ||
 			                foe.kind == EnemyKind::Wolf || foe.kind == EnemyKind::Guardian ||
 			                foe.kind == EnemyKind::ScaleLizard ||
-			                foe.kind == EnemyKind::WindSprite || foe.kind == EnemyKind::Emberling
+			                foe.kind == EnemyKind::WindSprite || foe.kind == EnemyKind::Emberling ||
+			                foe.kind == EnemyKind::EchoJelly
 			            ? Project(foe.attackTarget, m_Width, m_Height)
 			            : s;
-			    float radius = foe.kind == EnemyKind::Guardian || foe.kind == EnemyKind::Emberling
-			                       ? 76.f
-			                       : 38.f;
-			    r.Ellipse(warning.x, warning.y, radius, radius * .5f, {1, .19f, .10f, .35f});
+			    float radius =
+			        foe.kind == EnemyKind::Guardian || foe.kind == EnemyKind::Emberling ||
+			                foe.kind == EnemyKind::TidalCrab || foe.kind == EnemyKind::EchoJelly
+			            ? 76.f
+			            : 38.f;
+			    Color danger = foe.kind == EnemyKind::EchoJelly ? Color{.32f, .72f, 1, .52f}
+			                                                    : Color{1, .19f, .10f, .35f};
+			    r.Ellipse(warning.x, warning.y, radius, radius * .5f, danger);
 			    if (foe.kind == EnemyKind::ScaleLizard)
 				    r.Polygon({{s.x - 4, s.y}, {s.x + 4, s.y}, warning}, {1, .50f, .16f, .35f});
 		    }
 		    if (enemy >= 0 && m_Enemies[enemy].heat > 0)
 		    {
 			    Point p = Project(m_Enemies[enemy].attackTarget, m_Width, m_Height);
+			    if (m_Enemies[enemy].kind == EnemyKind::EchoJelly)
+			    {
+				    r.Ellipse(p.x, p.y, 65, 32, {.30f, .76f, 1.2f, .55f});
+				    r.SoftEllipse(p.x, p.y, 45, 22, {.60f, 1, 1.2f, .38f});
+				    return;
+			    }
 			    r.Ellipse(p.x, p.y, 65, 32, {1.2f, .31f, .08f, .48f});
 			    r.Polygon(
 			        {{p.x - 30, p.y}, {p.x + 30, p.y}, {p.x + 30, p.y - 32}, {p.x - 30, p.y - 32}},
@@ -1331,6 +1494,7 @@ void FirstLevel::BuildScene()
 	                     : m_Region == Region::DwarfCity   ? Color{.43f, .43f, .36f, 1}
 	                     : m_Region == Region::StoneRidge  ? Color{.39f, .40f, .29f, 1}
 	                     : m_Region == Region::MistShore   ? Color{.24f, .36f, .35f, 1}
+	                     : m_Region == Region::TidalRuins  ? Color{.25f, .37f, .37f, 1}
 	                                                       : Color{.25f, .34f, .18f, 1};
 	// Aggregate ground tiles in 8x8 groups; props still have independent Actor ownership.
 	for (int cy = 0; cy < Rows; cy += 8)
@@ -1374,8 +1538,12 @@ void FirstLevel::BuildScene()
 						    {
 							    bool camp = Distance(p, Camp) < 9 || OnTravelRoad(p);
 							    r.Polygon(quad,
-							              camp ? Color{.48f, .40f, .27f, 1} : terrainColor,
-							              m_Region == Region::DwarfCity   ? Material::Stone
+							              camp && m_Region != Region::TidalRuins
+							                  ? Color{.48f, .40f, .27f, 1}
+							                  : terrainColor,
+							              m_Region == Region::DwarfCity ||
+							                      m_Region == Region::TidalRuins
+							                  ? Material::Stone
 							              : camp                          ? Material::Dirt
 							              : m_Region == Region::DwarfMine ? Material::Stone
 							                                              : Material::Grass);
@@ -1464,6 +1632,7 @@ void FirstLevel::BuildScene()
 	}
 	BuildDwarfScene();
 	BuildDragonScene();
+	BuildCoastScene();
 	m_PlayerActor.SetUpdate(
 	    [this](Actor&, float dt)
 	    {
@@ -1549,8 +1718,10 @@ void FirstLevel::DrawHud(Renderer& r, int width, int height, bool paused)
 	       Cream);
 	r.Text(30,
 	       126,
-	       m_Region == Region::DragonRoost ? L"고룡에게 E로 대화 · 시험은 주황색 바닥 예고 회피"
-	       : m_Region == Region::DwarfCity ? L"평화 구역 · 기록관과 대장장이에게 E로 대화"
+	       m_Region == Region::DragonRoost  ? L"고룡에게 E로 대화 · 시험은 주황색 바닥 예고 회피"
+	       : m_Region == Region::DwarfCity  ? L"평화 구역 · 기록관과 대장장이에게 E로 대화"
+	       : m_Region == Region::MistShore  ? L"등대지기 나루에게 E로 대화 · 호숫가의 꿈 조사"
+	       : m_Region == Region::TidalRuins ? L"침수 신전 기록 조사 · 파란 조수 예고 피하기"
 	       : m_Level >= 3 && m_Shards > 0
 	           ? L"성장 목표 달성 · 출입구에서 E로 다음 지역 이동"
 	           : L"성장 목표: 3레벨 + 탐험 결정 1개 · 출구는 언제든 이용 가능",
@@ -1663,6 +1834,8 @@ void FirstLevel::DrawHud(Renderer& r, int width, int height, bool paused)
 			       : m_Region == Region::DragonRoost ? L"고룡 아르켄"
 			       : m_Region == Region::DwarfMine   ? L"작업 기록대"
 			       : m_Region == Region::DwarfCity   ? L"기록관 브린"
+			       : m_Region == Region::MistShore   ? L"등대지기 나루"
+			       : m_Region == Region::TidalRuins  ? L"물결의 기록대"
 			                                         : L"파수꾼 토르빅",
 			       Cream);
 		}
@@ -1709,7 +1882,12 @@ void FirstLevel::DrawHud(Renderer& r, int width, int height, bool paused)
 		           std::to_wstring(m_Materials[4]) + L" · 열맥 잔재 " +
 		           std::to_wstring(m_Materials[5]),
 		       Gold);
-		r.Text(x + 22, y + 300, L"전리품과 성장 기록은 이번 실행 동안 유지됩니다.", Cream);
+		r.Text(x + 22,
+		       y + 297,
+		       L"조수 껍질 " + std::to_wstring(m_Materials[6]) + L" · 물결 결정 " +
+		           std::to_wstring(m_Materials[7]),
+		       Gold);
+		r.Text(x + 22, y + 331, L"전리품과 성장 기록은 이번 실행 동안 유지됩니다.", Cream);
 	}
 	if (paused || m_Hp <= 0)
 	{
@@ -1734,6 +1912,8 @@ void FirstLevel::DrawHud(Renderer& r, int width, int height, bool paused)
 		       top + 15,
 		       m_Region == Region::Highlands || m_Region == Region::DragonRoost
 		           ? L"바람이 기억하는 경계"
+		       : m_Region == Region::MistShore || m_Region == Region::TidalRuins
+		           ? L"물결이 돌려준 이름"
 		           : L"돌에 새긴 귀환 약속",
 		       Gold);
 		if (m_ChoosingDragon)
@@ -1749,6 +1929,12 @@ void FirstLevel::DrawHud(Renderer& r, int width, int height, bool paused)
 			       top + 170,
 			       L"접근 방식은 변경할 수 없습니다. 시험 실패 시 E로 재시도합니다.",
 			       Gold);
+		}
+		else if (m_ChoosingCoast)
+		{
+			r.Text(left + 22, top + 55, L"[1] 이름 없이 인사 전하기 · 응답의 빛을 남김", Cream);
+			r.Text(left + 22, top + 91, L"[2] 전달 고리 잠재우기 · 목소리 연결 중단", Cream);
+			r.Text(left + 22, top + 145, L"두 선택 모두 썰물길을 통해 돌아갈 수 있습니다.", Gold);
 		}
 		else if (m_ChoosingDwarf)
 		{

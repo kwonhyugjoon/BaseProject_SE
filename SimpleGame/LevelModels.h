@@ -25,6 +25,12 @@ enum class LevelModel
 	ScaleLoot,
 	WindLoot,
 	EmberLoot,
+	TidalCrab,
+	EchoJelly,
+	ShellLoot,
+	TideLoot,
+	TidalShrine,
+	CoastBeacon,
 	Count
 };
 

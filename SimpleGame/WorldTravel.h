@@ -24,6 +24,7 @@ namespace WorldTravel
 		DwarfCity,
 		Highlands,
 		DragonRoost,
+		TidalRuins,
 		Count
 	};
 
@@ -49,13 +50,14 @@ namespace WorldTravel
 		    {{NearGate, Region::EchoHall},
 		     {FarGate, Region::DwarfMine},
 		     {{73, 23}, Region::DragonRoost}},
-		    {{NearGate, Region::EchoHall}},
+		    {{NearGate, Region::EchoHall}, {FarGate, Region::TidalRuins}},
 		    {{NearGate, Region::StoneRidge},
 		     {FarGate, Region::DwarfCity},
 		     {{73, 23}, Region::Basin}},
 		    {{NearGate, Region::DwarfMine}},
 		    {{NearGate, Region::Basin}, {FarGate, Region::DragonRoost}},
-		    {{NearGate, Region::Highlands}, {FarGate, Region::StoneRidge}}};
+		    {{NearGate, Region::Highlands}, {FarGate, Region::StoneRidge}},
+		    {{NearGate, Region::MistShore}}};
 		return links[static_cast<int>(region)];
 	}
 
@@ -76,7 +78,8 @@ namespace WorldTravel
 		                                 L"깊은돌 폐광길",
 		                                 L"깊은돌 도시 앞마당",
 		                                 L"바람등 고원",
-		                                 L"잿빛 날개 쉼터"};
+		                                 L"잿빛 날개 쉼터",
+		                                 L"침수 신전"};
 		return names[static_cast<int>(region)];
 	}
 
@@ -92,7 +95,8 @@ namespace WorldTravel
 		                             "dwarf_mine",
 		                             "dwarf_city",
 		                             "highlands",
-		                             "dragon_roost"};
+		                             "dragon_roost",
+		                             "tidal_ruins"};
 		return keys[static_cast<int>(region)];
 	}
 

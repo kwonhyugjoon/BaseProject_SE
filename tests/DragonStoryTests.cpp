@@ -144,7 +144,7 @@ int main()
 		MonitorSnapshot snapshot;
 		snapshot.scene = "dragon_roost";
 		level.CaptureMonitorState(snapshot);
-		assert(snapshot.npcs.size() == 5 && snapshot.npcs[4].visible &&
+		assert(snapshot.npcs.size() == 6 && snapshot.npcs[4].visible &&
 		       snapshot.villages[1].population == 2);
 		assert(snapshot.villages[1].mood ==
 		       (choice == 3 ? "서로 거리를 지킴" : "경계의 기억을 나눔"));

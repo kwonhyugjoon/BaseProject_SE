@@ -31,7 +31,8 @@ int main()
 	                    Region::DwarfMine,
 	                    Region::DwarfCity,
 	                    Region::Highlands,
-	                    Region::DragonRoost})
+	                    Region::DragonRoost,
+	                    Region::TidalRuins})
 		for (unsigned seed = 1; seed <= 32; ++seed)
 		{
 			level.Begin(seed, true, region);

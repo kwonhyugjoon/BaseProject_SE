@@ -56,7 +56,7 @@ void LevelModels::Load()
 	if (!m_Models[0].empty())
 		return;
 	std::vector<unsigned char> data;
-	bool valid = LoadAssetCache(L"level-models-v3.mesh", 3, 4 * 1024 * 1024, data);
+	bool valid = LoadAssetCache(L"level-models-v4.mesh", 4, 4 * 1024 * 1024, data);
 	size_t offset = 0;
 	for (auto& model : m_Models)
 	{
@@ -332,6 +332,79 @@ void LevelModels::Load()
 	Polygon(emberLoot, {{-13, -2}, {-9, -22}, {7, -25}, {15, -5}, {0, 2}}, {.39f, .25f, .17f, 1});
 	Polygon(emberLoot, {{-6, -13}, {2, -20}, {7, -8}, {0, -3}}, {1.5f, .55f, .13f, 1});
 
+	auto& crab = m_Models[static_cast<size_t>(LevelModel::TidalCrab)];
+	for (int side : {-1, 1})
+	{
+		for (int leg = 0; leg < 3; ++leg)
+		{
+			float y = -7.f - leg * 5;
+			Polygon(crab,
+			        {{side * 11.f, y - 4},
+			         {side * 33.f, y - 1},
+			         {side * 30.f, y + 3},
+			         {side * 13.f, y + 1}},
+			        {.36f, .48f, .41f, 1});
+		}
+	}
+	Oval(crab, 0, -16, 23, 13, {.36f, .50f, .42f, 1}, Material::Stone);
+	Oval(crab, 0, -21, 18, 7, {.57f, .69f, .54f, 1});
+	for (int side : {-1, 1})
+	{
+		Polygon(crab,
+		        {{side * 13.f, -13},
+		         {side * 31.f, -28},
+		         {side * 39.f, -23},
+		         {side * 30.f, -20},
+		         {side * 36.f, -16},
+		         {side * 26.f, -13}},
+		        {.76f, .47f, .29f, 1});
+		Oval(crab, side * 7.f, -16, 2, 2, {.93f, .87f, .43f, 1});
+	}
+
+	auto& jelly = m_Models[static_cast<size_t>(LevelModel::EchoJelly)];
+	for (int strand = -2; strand <= 2; ++strand)
+	{
+		float x = strand * 7.f;
+		Polygon(jelly,
+		        {{x - 2, -26}, {x + 3, -26}, {x + 4, -13}, {x + 1, -3}},
+		        {.52f, .73f, 1.02f, .65f});
+	}
+	Oval(jelly, 0, -34, 24, 15, {.37f, .68f, .85f, .9f});
+	Oval(jelly, 0, -29, 22, 6, {.58f, .88f, 1.05f, .85f});
+	Oval(jelly, 0, -37, 9, 8, {.76f, .99f, 1.15f, .9f});
+
+	auto& shell = m_Models[static_cast<size_t>(LevelModel::ShellLoot)];
+	Polygon(shell,
+	        {{-15, -4}, {-11, -20}, {0, -27}, {14, -17}, {11, -4}, {0, 1}},
+	        {.84f, .62f, .42f, 1});
+	Polygon(shell, {{-5, -4}, {0, -24}, {6, -4}}, {.99f, .83f, .63f, 1});
+	auto& tide = m_Models[static_cast<size_t>(LevelModel::TideLoot)];
+	Polygon(tide, {{-12, -6}, {0, -30}, {12, -7}, {0, 1}}, {.41f, .81f, 1.05f, 1});
+	Oval(tide, 0, -9, 5, 4, {.75f, 1.05f, 1.2f, 1});
+
+	auto& shrine = m_Models[static_cast<size_t>(LevelModel::TidalShrine)];
+	Oval(shrine, 0, 0, 48, 18, {.29f, .46f, .45f, 1}, Material::Stone);
+	for (int side : {-1, 1})
+		Polygon(shrine,
+		        {{side * 26.f, -4}, {side * 43.f, -6}, {side * 39.f, -62}, {side * 28.f, -68}},
+		        {.46f, .57f, .51f, 1},
+		        Material::Stone);
+	Polygon(shrine,
+	        {{-18, -7}, {-14, -25}, {13, -25}, {18, -7}},
+	        {.49f, .64f, .59f, 1},
+	        Material::Stone);
+	Polygon(shrine, {{-15, -24}, {-6, -30}, {11, -28}, {16, -23}}, {.72f, .83f, .75f, 1});
+
+	auto& beacon = m_Models[static_cast<size_t>(LevelModel::CoastBeacon)];
+	Polygon(
+	    beacon, {{-20, 0}, {-14, -69}, {14, -69}, {20, 0}}, {.52f, .59f, .53f, 1}, Material::Stone);
+	Polygon(beacon,
+	        {{-18, -66}, {-14, -91}, {14, -91}, {18, -66}},
+	        {.26f, .33f, .30f, 1},
+	        Material::Wood);
+	Oval(beacon, 0, -78, 9, 7, {1.05f, .85f, .49f, 1});
+	Polygon(beacon, {{-22, -91}, {0, -108}, {22, -91}}, {.31f, .47f, .43f, 1});
+
 	data.clear();
 	for (const auto& model : m_Models)
 	{
@@ -341,6 +414,6 @@ void LevelModels::Load()
 		std::memcpy(data.data() + start, &count, sizeof(count));
 		std::memcpy(data.data() + start + sizeof(count), model.data(), count * sizeof(ModelVertex));
 	}
-	SaveAssetCache(L"level-models-v3.mesh", 3, data);
+	SaveAssetCache(L"level-models-v4.mesh", 4, data);
 	std::cout << "Level models generated and cache save attempted.\n";
 }
