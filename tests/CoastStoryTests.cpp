@@ -77,8 +77,9 @@ int main()
 			MonitorSnapshot snapshot;
 			level.CaptureMonitorState(snapshot);
 			assert(snapshot.mobs[10].total == 24 && snapshot.mobs[11].total == 24);
-			assert(snapshot.villages.back().disposition ==
-			       (choice == 1 ? "조심스러운 접촉" : "연결 중단"));
+			assert(snapshot.villages[2].id == "mist_shore" &&
+			       snapshot.villages[2].disposition ==
+			           (choice == 1 ? "조심스러운 접촉" : "연결 중단"));
 			level.m_Player = WorldTravel::NearGate;
 			assert(level.Key('e') && level.RequestedExit() == Region::MistShore);
 			level.Begin(44, true, Region::MistShore, Region::TidalRuins);

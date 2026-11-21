@@ -32,7 +32,8 @@ int main()
 	                    Region::DwarfCity,
 	                    Region::Highlands,
 	                    Region::DragonRoost,
-	                    Region::TidalRuins})
+	                    Region::TidalRuins,
+	                    Region::Confluence})
 		for (unsigned seed = 1; seed <= 32; ++seed)
 		{
 			level.Begin(seed, true, region);
@@ -64,7 +65,8 @@ int main()
 				++sectors[static_cast<int>(enemy.home.y) / 20 * 4 +
 				          static_cast<int>(enemy.home.x) / 24];
 			}
-			bool peaceful = region == Region::DwarfCity || region == Region::DragonRoost;
+			bool peaceful = region == Region::DwarfCity || region == Region::DragonRoost ||
+			                region == Region::Confluence;
 			assert(level.m_Enemies.size() == (peaceful ? 0 : 48));
 			for (int count : sectors)
 				assert(count == (peaceful ? 0 : 3));

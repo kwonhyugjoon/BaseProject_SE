@@ -129,7 +129,7 @@ int main()
 		MonitorSnapshot snapshot;
 		snapshot.scene = "dwarf_city";
 		level.CaptureMonitorState(snapshot);
-		assert(snapshot.npcs.size() == 6 && snapshot.villages.size() == 3);
+		assert(snapshot.npcs.size() == 7 && snapshot.villages.size() == 4);
 		assert(snapshot.npcs[1].x == 50 && snapshot.npcs[1].y == 43 && snapshot.npcs[1].visible);
 		assert(snapshot.villages[0].population == 3);
 		assert(snapshot.villages[0].mood ==

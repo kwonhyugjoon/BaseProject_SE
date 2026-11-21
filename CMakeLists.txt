@@ -58,7 +58,8 @@ game_assets(SimpleGame)
 include(CTest)
 if(BUILD_TESTING)
     foreach(name SprintTests QuestJournalTests WorldTravelTests RegionConnectivityTests
-                 LevelExpansionTests TutorialPopulationTests DwarfStoryTests DragonStoryTests CoastStoryTests
+                 LevelExpansionTests TutorialPopulationTests DwarfStoryTests DragonStoryTests
+                 CoastStoryTests ConfluenceStoryTests
                  SceneGraphTests TreeCollisionGridTests FontTests GlfwInputTests ReviewRegressionTests VillageModelsTests)
         add_executable(${name} tests/${name}.cpp)
         target_link_libraries(${name} PRIVATE game_core)

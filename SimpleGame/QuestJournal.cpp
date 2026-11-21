@@ -31,6 +31,7 @@ void QuestJournal::Reset()
 	m_DragonApproach = 0;
 	m_CoastStage = CoastStage::Dream;
 	m_CoastChoice = 0;
+	m_ConfluenceStage = ConfluenceStage::Meeting;
 	m_Visited.fill(false);
 	m_Investigated.fill(false);
 	m_Routes.clear();
@@ -248,8 +249,53 @@ int QuestJournal::CoastChoice() const
 	return m_CoastChoice;
 }
 
+int QuestJournal::CompletedRegionalStories() const
+{
+	return (DwarfChoice() != 0) + (DragonChoice() != 0) + (CoastChoice() != 0);
+}
+
+QuestJournal::ConfluenceStage QuestJournal::ConfluenceProgress() const
+{
+	return CompletedRegionalStories() >= 2 ? m_ConfluenceStage : ConfluenceStage::Locked;
+}
+
+bool QuestJournal::HearConfluenceBriefing()
+{
+	if (ConfluenceProgress() != ConfluenceStage::Meeting || !Visited(Region::Confluence))
+		return false;
+	m_ConfluenceStage = ConfluenceStage::Chart;
+	return true;
+}
+
+bool QuestJournal::ReadConfluenceChart()
+{
+	if (ConfluenceProgress() != ConfluenceStage::Chart || !Visited(Region::Confluence))
+		return false;
+	m_ConfluenceStage = ConfluenceStage::Complete;
+	return true;
+}
+
 bool QuestJournal::CanTravel(Region from, Region to) const
 {
+	if (from == Region::Confluence || to == Region::Confluence)
+	{
+		const Region other = from == Region::Confluence ? to : from;
+		if (other == Region::Basin)
+			return from == Region::Confluence || ConfluenceProgress() != ConfluenceStage::Locked;
+		if (ConfluenceProgress() != ConfluenceStage::Complete)
+			return false;
+		switch (other)
+		{
+		case Region::DwarfCity:
+			return DwarfChoice() == 1;
+		case Region::Highlands:
+			return DragonChoice() == 1 || DragonChoice() == 2;
+		case Region::MistShore:
+			return CoastChoice() == 1;
+		default:
+			return false;
+		}
+	}
 	if (from == Region::MistShore && to == Region::TidalRuins)
 		return m_CoastStage >= CoastStage::Shrine;
 	if ((from == Region::StoneRidge && to == Region::DragonRoost) ||
@@ -279,6 +325,9 @@ Region QuestJournal::NextDestination() const
 {
 	if (m_Stage != Stage::Complete)
 		return Region::Village;
+	if (ConfluenceProgress() == ConfluenceStage::Meeting ||
+	    ConfluenceProgress() == ConfluenceStage::Chart)
+		return Region::Confluence;
 	if (m_CoastStage == CoastStage::Shrine || m_CoastStage == CoastStage::Choice)
 		return Region::TidalRuins;
 	if (m_DragonStage == DragonStage::Trace)
@@ -303,6 +352,10 @@ const wchar_t* QuestJournal::Objective() const
 {
 	if (m_Stage != Stage::Complete)
 		return TutorialObjectives[static_cast<int>(m_Stage)];
+	if (ConfluenceProgress() == ConfluenceStage::Meeting)
+		return L"갈림물 서고에서 기록지기 이솔에게 지역 기록 전하기";
+	if (ConfluenceProgress() == ConfluenceStage::Chart)
+		return L"갈림물 서고 중앙에서 겹지도를 조사하기";
 	if (m_CoastStage == CoastStage::Shrine)
 		return L"침수 신전 중앙에서 물결의 기록 조사하기";
 	if (m_CoastStage == CoastStage::Choice)
@@ -337,7 +390,7 @@ const wchar_t* QuestJournal::Objective() const
 	case Region::Highlands:
 		return L"바람등 고원의 길잡이 세라와 대화하기";
 	default:
-		return L"산맥·고원·해안의 기록 완료";
+		return L"서고의 겹지도 완성 · 세계의 경계 원정은 다음 장에서 이어집니다";
 	}
 }
 
@@ -385,6 +438,13 @@ std::vector<std::wstring> QuestJournal::Lines(int tab, Region current) const
 		if (m_DwarfStage != DwarfStage::Meeting || Investigated(Region::StoneRidge))
 			lines.push_back(L"드워프 이야기 · 돌에 새긴 귀환 약속");
 		lines.push_back(Objective());
+		if (m_Stage == Stage::Complete)
+		{
+			lines.push_back(L"서고를 여는 지역 기록: " +
+			                std::to_wstring(CompletedRegionalStories()) + L"곳 완료 (2곳 필요)");
+			if (ConfluenceProgress() == ConfluenceStage::Complete)
+				lines.push_back(L"겹지도 완성 · 서고 지름길은 각 지역에서 남긴 약속을 따릅니다.");
+		}
 		lines.push_back(
 		    L"고원은 분지 남쪽 길로 갈 수 있습니다. 드워프 이야기와 별개로 먼저 탐험해도 됩니다.");
 		if (m_Stage == Stage::Complete && m_CoastStage == CoastStage::Dream)
@@ -474,6 +534,9 @@ std::vector<std::wstring> QuestJournal::Lines(int tab, Region current) const
 			    m_CoastChoice == 1
 			        ? L"해안 선택: 이름 대신 인사를 전했다. 신전에 응답의 빛이 남았다."
 			        : L"해안 선택: 전달 고리를 잠재웠다. 해안은 조용해졌고 왕래는 계속된다.");
+		if (ConfluenceProgress() == ConfluenceStage::Complete)
+			lines.push_back(
+			    L"서고의 겹지도: 세 지역의 표식은 하나의 길망에 놓여 있다. 봉인은 응답을 늦추고 돌아갈 길을 남기는 경계였다.");
 	}
 	else
 	{

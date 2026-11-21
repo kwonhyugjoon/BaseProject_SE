@@ -97,21 +97,29 @@ void FirstLevel::CaptureMonitorState(MonitorSnapshot& snapshot) const
 	                        Region::DwarfCity,
 	                        Region::Highlands,
 	                        Region::DragonRoost,
-	                        Region::MistShore};
-	const Point positions[] = {
-	    {55, 41}, WorldTravel::SurveyStone, {57, 43}, {55, 41}, WorldTravel::SurveyStone, {55, 41}};
+	                        Region::MistShore,
+	                        Region::Confluence};
+	const Point positions[] = {{55, 41},
+	                           WorldTravel::SurveyStone,
+	                           {57, 43},
+	                           {55, 41},
+	                           WorldTravel::SurveyStone,
+	                           {55, 41},
+	                           {55, 41}};
 	const char* ids[] = {"Dwarf/Torvik",
 	                     "Dwarf/Bryn",
 	                     "Dwarf/Dorna",
 	                     "Highlands/Sera",
 	                     "Dragon/Arken",
-	                     "Coast/Naru"};
+	                     "Coast/Naru",
+	                     "Confluence/Isol"};
 	const char* labels[] = {"파수꾼 토르빅",
 	                        "기록관 브린",
 	                        "대장장이 도르나",
 	                        "길잡이 세라",
 	                        "고룡 아르켄",
-	                        "등대지기 나루"};
+	                        "등대지기 나루",
+	                        "기록지기 이솔"};
 	for (size_t i = 0; i < std::size(areas); ++i)
 	{
 		bool active =
@@ -120,7 +128,10 @@ void FirstLevel::CaptureMonitorState(MonitorSnapshot& snapshot) const
 		MonitorNpc npc;
 		npc.id = ids[i];
 		npc.name = labels[i];
-		npc.villageId = i < 3 ? "deepstone" : i < 5 ? "highlands" : "mist_shore";
+		npc.villageId = i < 3    ? "deepstone"
+		                : i < 5  ? "highlands"
+		                : i == 5 ? "mist_shore"
+		                         : "confluence";
 		npc.routine = i == 2 ? "대장간 안내" : "기록과 길 안내";
 		npc.state = !active ? "inactive_area"
 		            : IsStoryOpen() &&
@@ -186,6 +197,39 @@ void FirstLevel::CaptureMonitorState(MonitorSnapshot& snapshot) const
 	                : coastChoice == 2 ? "등대 아래에 닿던 울림이 멎었다."
 	                                   : "주민들이 같은 꿈에서 물 아래의 목소리를 들었다."};
 	snapshot.villages.push_back(coast);
+
+	using Stage = QuestJournal::ConfluenceStage;
+	const Stage progress = m_Journal.ConfluenceProgress();
+	MonitorVillage archive;
+	archive.id = "confluence";
+	archive.name = "갈림물 서고";
+	archive.population = 1;
+	archive.mood = progress == Stage::Locked     ? "서고 닫힘"
+	               : progress == Stage::Complete ? "겹지도 열람"
+	                                             : "기록 대조 준비";
+	archive.disposition = "지역의 허락을 따른 통행";
+	archive.rumorsImplemented = true;
+	if (progress == Stage::Locked)
+		archive.rumors.push_back("서로 다른 두 지역의 기록이 모여야 서고를 연다.");
+	else if (progress != Stage::Complete)
+		archive.rumors.push_back("이솔이 분지의 옛 서고를 열고 기록자를 기다린다.");
+	else
+	{
+		archive.rumors.push_back("겹지도에 세 갈래 길과 돌아올 표식이 함께 드러났다.");
+		if (m_Journal.DwarfChoice())
+			archive.rumors.push_back(m_Journal.CanTravel(Region::Confluence, Region::DwarfCity)
+			                             ? "드워프가 감시 아래 도시 연락문을 열었다."
+			                             : "드워프는 도시 연락문의 봉인을 유지한다.");
+		if (m_Journal.DragonChoice())
+			archive.rumors.push_back(m_Journal.CanTravel(Region::Confluence, Region::Highlands)
+			                             ? "고원이 서고의 바람 계단을 안내한다."
+			                             : "아르켄의 뜻에 따라 바람 계단은 닫혀 있다.");
+		if (m_Journal.CoastChoice())
+			archive.rumors.push_back(m_Journal.CanTravel(Region::Confluence, Region::MistShore)
+			                             ? "나루가 등불을 걸어 호숫가 연락길을 알렸다."
+			                             : "호숫가는 연락길을 닫고 기존 길로 왕래한다.");
+	}
+	snapshot.villages.push_back(archive);
 }
 
 int FirstLevel::AttackPower() const
@@ -335,9 +379,8 @@ void FirstLevel::Generate()
 			if (!x || !y || x == Columns - 1 || y == Rows - 1)
 				m_Tiles[y * Columns + x] = Tile::Tree;
 	// Reject every obstacle that would isolate any traversable cell.
-	for (int i = 0; m_Region != Region::DwarfCity && m_Region != Region::DragonRoost &&
-	                i < 2600 * Columns * Rows / (96 * 80);
-	     ++i)
+	const bool peaceful = WorldTravel::IsPeaceful(m_Region);
+	for (int i = 0; !peaceful && i < 2600 * Columns * Rows / (96 * 80); ++i)
 	{
 		int x = 1 + Random() % (Columns - 2), y = 1 + Random() % (Rows - 2);
 		int cell = y * Columns + x;
@@ -359,7 +402,7 @@ void FirstLevel::Generate()
 	}
 	m_Enemies.clear();
 	m_EnemyActors.ClearChildren();
-	if (m_Region == Region::DwarfCity || m_Region == Region::DragonRoost)
+	if (peaceful)
 	{
 		m_FlowTarget = -1;
 		return;
@@ -513,7 +556,7 @@ void FirstLevel::Begin(uint32_t seed, bool resetProgress, Region region, Region 
 
 bool FirstLevel::SafeExit(Point position, float margin) const
 {
-	if (m_Region == Region::DwarfCity || m_Region == Region::DragonRoost)
+	if (WorldTravel::IsPeaceful(m_Region))
 		return true;
 	if ((m_Region == Region::StoneRidge || m_Region == Region::Highlands ||
 	     m_Region == Region::MistShore) &&
@@ -787,7 +830,11 @@ bool FirstLevel::Key(unsigned char key)
 			if (!m_Journal.CanTravel(m_Region, destination))
 			{
 				Message(
-				    destination == Region::TidalRuins
+				    destination == Region::Confluence && m_Region == Region::Basin
+				        ? L"서고가 닫혀 있습니다. 산맥·고원·해안 중 두 곳의 이야기를 마치세요."
+				    : destination == Region::Confluence || m_Region == Region::Confluence
+				        ? L"연락길이 닫혀 있습니다. 겹지도를 완성하고 해당 지역의 허락을 확인하세요."
+				    : destination == Region::TidalRuins
 				        ? L"밀물에 입구가 잠겼습니다. 호숫가의 등대지기 나루에게 먼저 이야기하세요."
 				    : destination == Region::DragonRoost && m_Region == Region::Highlands
 				        ? L"쉼터의 표식이 흐릿합니다. 길잡이와 대화하고 중앙의 경계문을 먼저 조사하세요."
@@ -815,16 +862,23 @@ bool FirstLevel::Key(unsigned char key)
 				InteractDragon();
 			else if (m_Region == Region::MistShore || m_Region == Region::TidalRuins)
 				InteractCoast();
+			else if (m_Region == Region::Confluence)
+				InteractConfluence(false);
 			else
 				InteractStory();
 			return false;
 		}
 		if (m_SurveyStone && Distance(m_Player, m_SurveyStone->WorldPosition()) < 2.5f &&
 		    ClearLine(m_Player, m_SurveyStone->WorldPosition()))
-			Message(
-			    m_Journal.Investigate(m_Region)
-			        ? L"새 이정표 단서를 여행 일지에 기록했습니다. J로 다음 목적지를 확인하세요."
-			        : L"이미 기록한 이정표입니다. J로 단서와 다음 목적지를 확인하세요.");
+		{
+			if (m_Region == Region::Confluence)
+				InteractConfluence(true);
+			else
+				Message(
+				    m_Journal.Investigate(m_Region)
+				        ? L"새 이정표 단서를 여행 일지에 기록했습니다. J로 다음 목적지를 확인하세요."
+				        : L"이미 기록한 이정표입니다. J로 단서와 다음 목적지를 확인하세요.");
+		}
 	}
 	return false;
 }
@@ -1149,6 +1203,9 @@ void FirstLevel::BuildDwarfScene()
 
 Point FirstLevel::StoryTarget() const
 {
+	if (m_Region == Region::Confluence &&
+	    m_Journal.ConfluenceProgress() == QuestJournal::ConfluenceStage::Chart)
+		return WorldTravel::SurveyStone;
 	if (m_Region == Region::MistShore && !m_Journal.Investigated(m_Region))
 		return WorldTravel::SurveyStone;
 	if (m_DragonTrace && m_Journal.DragonProgress() == QuestJournal::DragonStage::Trace)
@@ -1156,6 +1213,87 @@ Point FirstLevel::StoryTarget() const
 	if (m_StoryContact && (m_Region != Region::StoneRidge || m_Journal.Investigated(m_Region)))
 		return m_StoryContact->WorldPosition();
 	return WorldTravel::SurveyStone;
+}
+
+void FirstLevel::BuildConfluenceScene()
+{
+	if (m_Region != Region::Confluence)
+		return;
+
+	m_StoryContact = &m_StaticActors.AddChild("Confluence/Isol", {55, 41});
+	m_StoryContact->SetDraw(
+	    [this](Actor& actor, Renderer& r)
+	    {
+		    Point p = Project(actor.WorldPosition(), m_Width, m_Height);
+		    r.Character(p.x, p.y, 1, 8, {.48f, .41f, .62f, 1});
+	    });
+	m_SurveyStone = &m_StaticActors.AddChild("Confluence/Chart", WorldTravel::SurveyStone);
+	ModelActor(*m_SurveyStone, LevelModel::Archive);
+	ModelActor(m_StaticActors.AddChild("Confluence/Shelves", {51, 36}), LevelModel::DwarfHall);
+	m_SurveyStone->AddChild("ChartLight")
+	    .SetDraw(
+	        [this](Actor& actor, Renderer& r)
+	        {
+		        if (m_Journal.ConfluenceProgress() != QuestJournal::ConfluenceStage::Complete)
+			        return;
+		        Point p = Project(actor.WorldPosition(), m_Width, m_Height);
+		        r.SoftEllipse(p.x, p.y - 21, 30, 16, {.48f, .85f, 1.25f, .55f});
+	        });
+}
+
+void FirstLevel::InteractConfluence(bool atChart)
+{
+	using Stage = QuestJournal::ConfluenceStage;
+	const Stage stage = m_Journal.ConfluenceProgress();
+	m_DialoguePage = 0;
+	m_StoryAction = StoryAction::None;
+	if (stage == Stage::Locked)
+	{
+		m_Dialogue = {L"기록지기 이솔: 서로 다른 두 지역을 기록한 사람에게 서고를 엽니다."};
+		return;
+	}
+	if (atChart)
+	{
+		if (stage == Stage::Meeting)
+			m_Dialogue = {L"세 방향의 표식이 있는 빈 지도다. 먼저 기록지기 이솔과 이야기하자."};
+		else if (stage == Stage::Chart)
+		{
+			m_Dialogue = {
+			    L"지역마다 달랐던 기록을 겹치자 산길, 바람길, 물길이 같은 표식에서 이어졌다. 지도의 빈 부분에는 사람을 가두기 위한 벽 대신 여러 겹의 돌아오는 길이 그려져 있다.",
+			    L"세 지역은 같은 경계를 서로 다른 이유로 지켰다. 지도 가장자리에는 아직 이름 모를 출발점이 하나 남아 있다. 다음 원정에는 이 표식을 가져가자."};
+			m_StoryAction = StoryAction::ConfluenceChart;
+		}
+		else
+			m_Dialogue = {
+			    L"겹지도 가장자리의 돌아오는 표식을 일지에 옮겼다. 분지의 문은 열려 있고, 연락길은 각 지역의 허락을 따른다."};
+		return;
+	}
+
+	m_Dialogue = {
+	    stage == Stage::Meeting
+	        ? L"기록지기 이솔: 다른 곳에서 가져온 두 기록이라면 빈 지도를 맞춰 볼 수 있어요. 각 지역이 무엇을 지키려 했는지부터 살펴봐요."
+	        : L"기록지기 이솔: 여행에서 남긴 약속은 이곳에도 전해집니다. 지도가 길을 보여도, 그 길을 쓸지는 양쪽이 함께 정하니까요."};
+	if (int choice = m_Journal.DwarfChoice())
+		m_Dialogue.push_back(
+		    choice == 1
+		        ? L"드워프는 광부가 돌아올 길을 남기려고 돌문을 세웠어요. 브린은 감시하는 연락길도 쓸 수 있게 했어요."
+		        : L"드워프는 광부가 돌아올 길을 남기려고 돌문을 세웠어요. 브린의 뜻대로 도시 연락문의 봉인은 지킬 거예요.");
+	if (int choice = m_Journal.DragonChoice())
+		m_Dialogue.push_back(
+		    choice == 3
+		        ? L"아르켄은 울림이 겹치지 않게 응답을 늦췄다고 했죠. 이미 거리를 두기로 한 고원 쪽 바람 계단은 닫아 둘게요."
+		        : L"아르켄은 울림이 겹치지 않게 응답을 늦췄다고 했죠. 고원이 보내온 표식 덕에 바람 계단을 함께 쓸 수 있어요.");
+	if (int choice = m_Journal.CoastChoice())
+		m_Dialogue.push_back(
+		    choice == 1
+		        ? L"나루가 남긴 인사에는 응답을 기다리는 간격이 있었어요. 호숫가로 가는 길에는 등불도 걸어 두었대요."
+		        : L"신전에서 고리를 닫자 꿈으로 오던 목소리도 멎었어요. 나루는 연락길 대신 지금의 숲길을 쓰기로 했어요.");
+	if (stage == Stage::Meeting)
+	{
+		m_Dialogue.push_back(
+		    L"이솔: 중앙의 겹지도를 살펴봐요. 기록이 더 생기면 그때 가져와도 됩니다.");
+		m_StoryAction = StoryAction::ConfluenceBriefing;
+	}
 }
 
 void FirstLevel::BuildCoastScene()
@@ -1339,6 +1477,10 @@ void FirstLevel::FinishStory()
 		Message(L"나루의 꿈 기록 · 썰물길이 열렸습니다. 동쪽 출입구를 확인하세요.");
 	else if (m_StoryAction == StoryAction::TidalShrine && m_Journal.ReadTidalShrine())
 		m_ChoosingCoast = true;
+	else if (m_StoryAction == StoryAction::ConfluenceBriefing && m_Journal.HearConfluenceBriefing())
+		Message(L"지역 기록을 대조했습니다. 서고 중앙의 겹지도를 확인하세요.");
+	else if (m_StoryAction == StoryAction::ConfluenceChart && m_Journal.ReadConfluenceChart())
+		Message(L"겹지도 완성 · 일지와 지도를 열어 이용할 수 있는 길을 확인하세요.");
 	m_StoryAction = StoryAction::None;
 }
 
@@ -1495,6 +1637,7 @@ void FirstLevel::BuildScene()
 	                     : m_Region == Region::StoneRidge  ? Color{.39f, .40f, .29f, 1}
 	                     : m_Region == Region::MistShore   ? Color{.24f, .36f, .35f, 1}
 	                     : m_Region == Region::TidalRuins  ? Color{.25f, .37f, .37f, 1}
+	                     : m_Region == Region::Confluence  ? Color{.34f, .42f, .42f, 1}
 	                                                       : Color{.25f, .34f, .18f, 1};
 	// Aggregate ground tiles in 8x8 groups; props still have independent Actor ownership.
 	for (int cy = 0; cy < Rows; cy += 8)
@@ -1537,12 +1680,13 @@ void FirstLevel::BuildScene()
 						    else
 						    {
 							    bool camp = Distance(p, Camp) < 9 || OnTravelRoad(p);
+							    bool archive = m_Region == Region::Confluence;
 							    r.Polygon(quad,
-							              camp && m_Region != Region::TidalRuins
+							              camp && m_Region != Region::TidalRuins && !archive
 							                  ? Color{.48f, .40f, .27f, 1}
 							                  : terrainColor,
 							              m_Region == Region::DwarfCity ||
-							                      m_Region == Region::TidalRuins
+							                      m_Region == Region::TidalRuins || archive
 							                  ? Material::Stone
 							              : camp                          ? Material::Dirt
 							              : m_Region == Region::DwarfMine ? Material::Stone
@@ -1633,6 +1777,7 @@ void FirstLevel::BuildScene()
 	BuildDwarfScene();
 	BuildDragonScene();
 	BuildCoastScene();
+	BuildConfluenceScene();
 	m_PlayerActor.SetUpdate(
 	    [this](Actor&, float dt)
 	    {
@@ -1696,7 +1841,7 @@ void FirstLevel::DrawHud(Renderer& r, int width, int height, bool paused)
 	r.Text(30,
 	       24,
 	       std::wstring(WorldTravel::Name(m_Region)) +
-	           (m_Region == Region::DwarfCity || m_Region == Region::DragonRoost ? L" · 대화 지역"
+	           (WorldTravel::IsPeaceful(m_Region)  ? L" · 대화 지역"
 	            : WorldTravel::IsPassage(m_Region) ? L" · 위험한 교역길"
 	                                               : L" · 탐험 지역"),
 	       Gold);
@@ -1722,6 +1867,7 @@ void FirstLevel::DrawHud(Renderer& r, int width, int height, bool paused)
 	       : m_Region == Region::DwarfCity  ? L"평화 구역 · 기록관과 대장장이에게 E로 대화"
 	       : m_Region == Region::MistShore  ? L"등대지기 나루에게 E로 대화 · 호숫가의 꿈 조사"
 	       : m_Region == Region::TidalRuins ? L"침수 신전 기록 조사 · 파란 조수 예고 피하기"
+	       : m_Region == Region::Confluence ? L"평화 구역 · 이솔과 겹지도에 E로 상호작용"
 	       : m_Level >= 3 && m_Shards > 0
 	           ? L"성장 목표 달성 · 출입구에서 E로 다음 지역 이동"
 	           : L"성장 목표: 3레벨 + 탐험 결정 1개 · 출구는 언제든 이용 가능",
@@ -1769,6 +1915,10 @@ void FirstLevel::DrawHud(Renderer& r, int width, int height, bool paused)
 	if (m_DragonTrace && Distance(m_Player, m_DragonTrace->WorldPosition()) < 2.5f &&
 	    !IsStoryOpen() && !m_Map && !m_Stats && !paused)
 		r.Text(30, height - 120.f, L"[E] 벗겨진 비늘과 경계문 조사", Gold);
+	if (m_Region == Region::Confluence && m_SurveyStone &&
+	    Distance(m_Player, m_SurveyStone->WorldPosition()) < 2.5f && !IsStoryOpen() && !m_Map &&
+	    !m_Stats && !paused && m_Hp > 0)
+		r.Text(30, height - 120.f, L"[E] 겹지도 조사", Gold);
 	if (m_TrialWaves > 0)
 		r.Text(30,
 		       274,
@@ -1818,11 +1968,18 @@ void FirstLevel::DrawHud(Renderer& r, int width, int height, bool paused)
 			       Cream);
 		}
 		if (m_SurveyStone)
+		{
 			mark(m_SurveyStone->WorldPosition(),
 			     m_Journal.NextDestination() == m_Region &&
 			             Distance(StoryTarget(), WorldTravel::SurveyStone) < .1f
 			         ? Gold
 			         : Color{.8f, .7f, .4f, 1});
+			if (m_Region == Region::Confluence)
+				r.Text(left + m_SurveyStone->WorldPosition().x / 2 * scale - 40,
+				       top + m_SurveyStone->WorldPosition().y / 2 * scale + 8,
+				       L"겹지도",
+				       Cream);
+		}
 		if (m_StoryContact)
 		{
 			bool target = m_Journal.NextDestination() == m_Region &&
@@ -1836,6 +1993,7 @@ void FirstLevel::DrawHud(Renderer& r, int width, int height, bool paused)
 			       : m_Region == Region::DwarfCity   ? L"기록관 브린"
 			       : m_Region == Region::MistShore   ? L"등대지기 나루"
 			       : m_Region == Region::TidalRuins  ? L"물결의 기록대"
+			       : m_Region == Region::Confluence  ? L"기록지기 이솔"
 			                                         : L"파수꾼 토르빅",
 			       Cream);
 		}
@@ -1914,7 +2072,8 @@ void FirstLevel::DrawHud(Renderer& r, int width, int height, bool paused)
 		           ? L"바람이 기억하는 경계"
 		       : m_Region == Region::MistShore || m_Region == Region::TidalRuins
 		           ? L"물결이 돌려준 이름"
-		           : L"돌에 새긴 귀환 약속",
+		       : m_Region == Region::Confluence ? L"서로 다른 진실"
+		                                        : L"돌에 새긴 귀환 약속",
 		       Gold);
 		if (m_ChoosingDragon)
 		{

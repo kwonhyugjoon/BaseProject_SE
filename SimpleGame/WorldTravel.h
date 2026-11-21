@@ -25,6 +25,7 @@ namespace WorldTravel
 		Highlands,
 		DragonRoost,
 		TidalRuins,
+		Confluence,
 		Count
 	};
 
@@ -43,27 +44,42 @@ namespace WorldTravel
 		    {{NearGate, Region::Passage},
 		     {FarGate, Region::EchoHall},
 		     {{73, 23}, Region::DwarfMine},
-		     {{49, 57}, Region::Highlands}},
+		     {{49, 57}, Region::Highlands},
+		     {{25, 57}, Region::Confluence}},
 		    {{NearGate, Region::Basin},
 		     {{73, 41}, Region::StoneRidge},
 		     {{49, 57}, Region::MistShore}},
 		    {{NearGate, Region::EchoHall},
 		     {FarGate, Region::DwarfMine},
 		     {{73, 23}, Region::DragonRoost}},
-		    {{NearGate, Region::EchoHall}, {FarGate, Region::TidalRuins}},
+		    {{NearGate, Region::EchoHall},
+		     {FarGate, Region::TidalRuins},
+		     {{49, 57}, Region::Confluence}},
 		    {{NearGate, Region::StoneRidge},
 		     {FarGate, Region::DwarfCity},
 		     {{73, 23}, Region::Basin}},
-		    {{NearGate, Region::DwarfMine}},
-		    {{NearGate, Region::Basin}, {FarGate, Region::DragonRoost}},
+		    {{NearGate, Region::DwarfMine}, {FarGate, Region::Confluence}},
+		    {{NearGate, Region::Basin},
+		     {FarGate, Region::DragonRoost},
+		     {{73, 23}, Region::Confluence}},
 		    {{NearGate, Region::Highlands}, {FarGate, Region::StoneRidge}},
-		    {{NearGate, Region::MistShore}}};
+		    {{NearGate, Region::MistShore}},
+		    {{NearGate, Region::Basin},
+		     {{73, 23}, Region::DwarfCity},
+		     {FarGate, Region::Highlands},
+		     {{23, 57}, Region::MistShore}}};
 		return links[static_cast<int>(region)];
 	}
 
 	inline bool IsPassage(Region region)
 	{
 		return region == Region::Passage || region == Region::EchoHall;
+	}
+
+	inline bool IsPeaceful(Region region)
+	{
+		return region == Region::DwarfCity || region == Region::DragonRoost ||
+		       region == Region::Confluence;
 	}
 
 	inline const wchar_t* Name(Region region)
@@ -79,7 +95,8 @@ namespace WorldTravel
 		                                 L"깊은돌 도시 앞마당",
 		                                 L"바람등 고원",
 		                                 L"잿빛 날개 쉼터",
-		                                 L"침수 신전"};
+		                                 L"침수 신전",
+		                                 L"갈림물 서고"};
 		return names[static_cast<int>(region)];
 	}
 
@@ -96,7 +113,8 @@ namespace WorldTravel
 		                             "dwarf_city",
 		                             "highlands",
 		                             "dragon_roost",
-		                             "tidal_ruins"};
+		                             "tidal_ruins",
+		                             "confluence"};
 		return keys[static_cast<int>(region)];
 	}
 

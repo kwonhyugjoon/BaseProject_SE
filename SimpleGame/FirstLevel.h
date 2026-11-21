@@ -133,7 +133,9 @@ class FirstLevel
 		DragonAudience,
 		DragonMemory,
 		CoastDream,
-		TidalShrine
+		TidalShrine,
+		ConfluenceBriefing,
+		ConfluenceChart
 	};
 
 	QuestJournal& m_Journal;
@@ -203,7 +205,9 @@ class FirstLevel
 	void BuildDwarfScene();
 	void BuildDragonScene();
 	void BuildCoastScene();
+	void BuildConfluenceScene();
 	void InteractCoast();
+	void InteractConfluence(bool atChart);
 	void InteractDragon();
 	void StartDragonTrial();
 	void UpdateDragonTrial(float dt);
