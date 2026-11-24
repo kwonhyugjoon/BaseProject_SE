@@ -18,6 +18,12 @@ namespace
 	const Point Camp = WorldTravel::NearGate;
 	const Color Cream = {.94f, .90f, .76f, 1};
 	const Color Gold = {.98f, .73f, .36f, 1};
+	constexpr int RecoveryCost = 6;
+	constexpr int RevivalCost = 15;
+	constexpr int SwordAttack = 4;
+	constexpr int CoatDefense = 2;
+	constexpr int GearCosts[] = {3, 4};
+	const wchar_t* const GearNames[] = {L"여행 검", L"보강 외투"};
 }
 
 FirstLevel::FirstLevel(QuestJournal& journal)
@@ -234,7 +240,7 @@ void FirstLevel::CaptureMonitorState(MonitorSnapshot& snapshot) const
 
 int FirstLevel::AttackPower() const
 {
-	return 12 + (m_Level - 1) * 4;
+	return 12 + (m_Level - 1) * 4 + (m_Gear[0] == GearState::Equipped ? SwordAttack : 0);
 }
 
 int FirstLevel::MaxHp() const
@@ -244,7 +250,7 @@ int FirstLevel::MaxHp() const
 
 int FirstLevel::Defense() const
 {
-	return m_Level - 1;
+	return m_Level - 1 + (m_Gear[1] == GearState::Equipped ? CoatDefense : 0);
 }
 
 int FirstLevel::ExperienceAt(int level)
@@ -473,6 +479,8 @@ void FirstLevel::ResetProgress()
 	m_Hp = 100;
 	m_Coins = m_Shards = m_Kills = 0;
 	m_Materials.fill(0);
+	m_Gear.fill(GearState::Unmade);
+	m_RevivalDebt = 0;
 }
 
 void FirstLevel::ClearInput()
@@ -734,12 +742,16 @@ void FirstLevel::Attack()
 void FirstLevel::Pickup()
 {
 	int picked = 0;
+	int repaid = 0;
 	for (auto it = m_Drops.begin(); it != m_Drops.end();)
 	{
 		if (Distance(it->actor->WorldPosition(), m_Player) < 2.5f &&
 		    ClearLine(m_Player, it->actor->WorldPosition()))
 		{
-			m_Coins += it->coins;
+			const int payment = std::min(m_RevivalDebt, it->coins);
+			m_RevivalDebt -= payment;
+			repaid += payment;
+			m_Coins += it->coins - payment;
 			m_Shards += it->shards;
 			if (it->material >= 0)
 				++m_Materials[it->material];
@@ -752,8 +764,75 @@ void FirstLevel::Pickup()
 			++it;
 	}
 	if (picked)
-		Message(L"전리품 획득 · 동전 " + std::to_wstring(m_Coins) + L" · 탐험 결정 " +
-		        std::to_wstring(m_Shards));
+	{
+		std::wstring text = L"전리품 획득 · 동전 " + std::to_wstring(m_Coins) + L" · 탐험 결정 " +
+		                    std::to_wstring(m_Shards);
+		if (repaid)
+			text += L" · 부활 비용 상환 " + std::to_wstring(repaid);
+		Message(text);
+	}
+}
+
+void FirstLevel::UseGear(size_t slot)
+{
+	auto& state = m_Gear[slot];
+	const std::wstring name = GearNames[slot];
+	if (state == GearState::Unmade)
+	{
+		if (m_Materials[0] < GearCosts[slot])
+		{
+			Message(name + L" 제작에는 야외 재료 " + std::to_wstring(GearCosts[slot]) +
+			        L"개가 필요합니다.");
+			return;
+		}
+		m_Materials[0] -= GearCosts[slot];
+		state = GearState::Equipped;
+		Message(name + L" 제작 및 장착");
+	}
+	else
+	{
+		state = state == GearState::Equipped ? GearState::Stored : GearState::Equipped;
+		Message(name + (state == GearState::Equipped ? L" 장착" : L" 해제"));
+	}
+}
+
+void FirstLevel::Recover()
+{
+	if (m_Hp == MaxHp())
+	{
+		Message(L"이미 체력이 가득 찼습니다.");
+		return;
+	}
+	if (m_Coins < RecoveryCost)
+	{
+		Message(L"회복에는 동전 " + std::to_wstring(RecoveryCost) + L"개가 필요합니다.");
+		return;
+	}
+	const int restored = std::min(MaxHp() - m_Hp, MaxHp() * 3 / 10);
+	m_Coins -= RecoveryCost;
+	m_Hp += restored;
+	Message(L"체력 " + std::to_wstring(restored) + L" 회복");
+}
+
+void FirstLevel::Revive()
+{
+	const int paid = std::min(m_Coins, RevivalCost);
+	m_Coins -= paid;
+	m_RevivalDebt += RevivalCost - paid;
+	m_Hp = MaxHp() / 2;
+
+	ClearInput();
+	m_Player = m_Camera = m_ReturnTrail.lastSafe = Camp;
+	m_FlowTarget = -1;
+	m_RequestedExit = Exit::None;
+	m_Map = m_Stats = m_Walking = m_ReturnedFromEdge = false;
+	m_Swing = m_AttackCooldown = m_TrialWindup = 0;
+	m_TrialWaves = 0;
+	m_HitCooldown = .6f;
+
+	Message(m_RevivalDebt > 0
+	            ? L"야영지에서 부활 · 남은 부활 비용 " + std::to_wstring(m_RevivalDebt) + L"동전"
+	            : L"야영지에서 부활 · 동전 " + std::to_wstring(RevivalCost) + L"개 사용");
 }
 
 bool FirstLevel::Key(unsigned char key)
@@ -763,7 +842,7 @@ bool FirstLevel::Key(unsigned char key)
 	if (m_Hp <= 0)
 	{
 		if (key == 'r')
-			Begin(m_Seed + 1, true, m_Region);
+			Revive();
 		return false;
 	}
 	if (m_ChoosingDwarf)
@@ -809,14 +888,31 @@ bool FirstLevel::Key(unsigned char key)
 	if (key == 'i')
 	{
 		m_Stats = !m_Stats;
+		if (m_Stats)
+		{
+			m_Map = false;
+			m_MessageTime = 0;
+		}
 		ClearInput();
+		return false;
 	}
 	if (key == 'm')
 	{
 		m_Map = !m_Map;
+		if (m_Map)
+			m_Stats = false;
 		ClearInput();
+		return false;
 	}
-	if (m_Map || m_Stats)
+	if (m_Stats)
+	{
+		if (key == '1' || key == '2')
+			UseGear(key - '1');
+		else if (key == 'h')
+			Recover();
+		return false;
+	}
+	if (m_Map)
 		return false;
 	if (key == ' ')
 		m_AttackQueued = true;
@@ -1788,7 +1884,9 @@ void FirstLevel::BuildScene()
 	    [this](Actor& actor, Renderer& r)
 	    {
 		    Point s = Project(actor.WorldPosition(), m_Width, m_Height);
-		    Color coat = m_HitCooldown > 0 ? Color{1, .30f, .25f, 1} : Color{.35f, .49f, .67f, 1};
+		    Color coat = m_HitCooldown > 0                  ? Color{1, .30f, .25f, 1}
+		                 : m_Gear[1] == GearState::Equipped ? Color{.47f, .59f, .45f, 1}
+		                                                    : Color{.35f, .49f, .67f, 1};
 		    float cadence = m_Input && m_Input[GameInput::Sprint] ? 20.f : 10.f;
 		    r.Character(
 		        s.x, s.y, m_Facing, m_Walking ? static_cast<int>(m_Time * cadence) % 8 : 8, coat);
@@ -1811,7 +1909,9 @@ void FirstLevel::BuildScene()
 		    float swing = (1 - m_Swing / .18f) * 1.8f - .9f;
 		    Point tip = {s.x + std::cos(angle + swing) * 46,
 		                 s.y - 19 + std::sin(angle + swing) * 30};
-		    r.Polygon({{s.x - 3, s.y - 17}, tip, {s.x + 3, s.y - 23}}, {1.6f, 1.35f, .75f, .9f});
+		    Color steel = m_Gear[0] == GearState::Equipped ? Color{.85f, 1.2f, 1.6f, .9f}
+		                                                   : Color{1.6f, 1.35f, .75f, .9f};
+		    r.Polygon({{s.x - 3, s.y - 17}, tip, {s.x + 3, s.y - 23}}, steel);
 	    });
 }
 
@@ -1883,7 +1983,7 @@ void FirstLevel::DrawHud(Renderer& r, int width, int height, bool paused)
 	       Cream);
 	r.Text(30,
 	       static_cast<float>(height - 49),
-	       L"I 가방/스탯 · J 여행 일지 · M 지도 · P 후처리 비교 · Esc 일시정지",
+	       L"I 가방·장비·회복 · J 여행 일지 · M 지도 · P 후처리 비교 · Esc 일시정지",
 	       Cream);
 	auto route = m_Journal.RouteToNext(m_Region);
 	r.Rect(15, 167, width - 30.f, 63, {.025f, .055f, .055f, .94f});
@@ -2014,38 +2114,56 @@ void FirstLevel::DrawHud(Renderer& r, int width, int height, bool paused)
 	}
 	if (m_Stats)
 	{
-		float x = width * .5f - 300, y = height * .5f - 180;
-		r.Rect(x, y, 600, 360, {.025f, .055f, .055f, .98f});
-		r.Text(x + 22, y + 20, L"가방과 성장 기록 · I 닫기", Gold);
+		float x = width * .5f - 380, y = height * .5f - 215;
+		r.Rect(x, y, 760, 430, {.025f, .055f, .055f, .98f});
+		r.Text(x + 22, y + 20, L"가방과 장비 · [I] 닫기", Gold);
 		r.Text(x + 22,
-		       y + 62,
-		       L"동전 " + std::to_wstring(m_Coins) + L"     탐험 결정 " + std::to_wstring(m_Shards),
+		       y + 60,
+		       L"동전 " + std::to_wstring(m_Coins) + L" · 탐험 결정 " + std::to_wstring(m_Shards) +
+		           L" · 남은 부활 비용 " + std::to_wstring(m_RevivalDebt),
 		       Cream);
 		r.Text(x + 22,
-		       y + 102,
-		       L"처치 " + std::to_wstring(m_Kills) + L"     누적 경험치 " +
-		           std::to_wstring(m_Experience),
+		       y + 95,
+		       L"처치 " + std::to_wstring(m_Kills) + L" · 누적 경험치 " +
+		           std::to_wstring(m_Experience) + L" · 공격 " + std::to_wstring(AttackPower()) +
+		           L" · 방어 " + std::to_wstring(Defense()),
 		       Cream);
-		r.Text(x + 22, y + 145, L"레벨마다 공격 +4 / 최대 체력 +15 / 방어 +1", Cream);
-		r.Text(x + 22, y + 182, L"레벨 상승 시 현재 체력은 자동 회복되지 않습니다.", Cream);
+		r.Text(x + 22, y + 145, L"재료", Gold);
 		r.Text(x + 22,
-		       y + 223,
+		       y + 172,
 		       L"야외 재료 " + std::to_wstring(m_Materials[0]) + L" · 광맥 광석 " +
 		           std::to_wstring(m_Materials[1]) + L" · 수호체 부품 " +
 		           std::to_wstring(m_Materials[2]),
-		       Gold);
+		       Cream);
 		r.Text(x + 22,
-		       y + 260,
+		       y + 201,
 		       L"능선 비늘 " + std::to_wstring(m_Materials[3]) + L" · 바람 결정 " +
 		           std::to_wstring(m_Materials[4]) + L" · 열맥 잔재 " +
 		           std::to_wstring(m_Materials[5]),
-		       Gold);
+		       Cream);
 		r.Text(x + 22,
-		       y + 297,
+		       y + 230,
 		       L"조수 껍질 " + std::to_wstring(m_Materials[6]) + L" · 물결 결정 " +
 		           std::to_wstring(m_Materials[7]),
+		       Cream);
+		for (size_t slot = 0; slot < m_Gear.size(); ++slot)
+		{
+			std::wstring line = L"[" + std::to_wstring(slot + 1) + L"] " + GearNames[slot];
+			line += slot == 0 ? L" · 공격 +" + std::to_wstring(SwordAttack)
+			                  : L" · 방어 +" + std::to_wstring(CoatDefense);
+			GearState state = m_Gear[slot];
+			line += state == GearState::Unmade
+			            ? L" · 제작: 야외 재료 " + std::to_wstring(GearCosts[slot]) + L"개"
+			        : state == GearState::Equipped ? L" · 장착 중 (누르면 해제)"
+			                                       : L" · 보관 중 (누르면 장착)";
+			r.Text(x + 22, y + 273 + 31 * static_cast<float>(slot), line, Gold);
+		}
+		r.Text(x + 22,
+		       y + 351,
+		       L"[H] 회복 · 동전 " + std::to_wstring(RecoveryCost) + L"개 · 최대 체력의 30%",
 		       Gold);
-		r.Text(x + 22, y + 331, L"전리품과 성장 기록은 이번 실행 동안 유지됩니다.", Cream);
+		if (m_MessageTime > 0)
+			r.Text(x + 22, y + 385, m_Message, Cream);
 	}
 	if (paused || m_Hp <= 0)
 	{
@@ -2053,12 +2171,19 @@ void FirstLevel::DrawHud(Renderer& r, int width, int height, bool paused)
 		    0, 0, static_cast<float>(width), static_cast<float>(height), {.02f, .035f, .03f, .85f});
 		r.Text(width * .5f - 220,
 		       height * .5f - 30,
-		       m_Hp <= 0 ? L"원정 실패 · 체력이 모두 소진되었습니다." : L"일시정지 · Esc로 계속",
+		       paused ? L"일시정지 · Esc로 계속" : L"원정 실패 · 체력이 모두 소진되었습니다.",
 		       Gold);
 		r.Text(width * .5f - 220,
 		       height * .5f + 12,
-		       m_Hp <= 0 ? L"R: 경험치·전리품을 초기화하고 새 원정 시작" : L"Q: 게임 종료",
+		       paused ? L"Q: 게임 종료"
+		              : L"[R] 부활 · 동전 " + std::to_wstring(RevivalCost) +
+		                    L"개 · 현재 지역 야영지에서 체력 절반",
 		       Cream);
+		if (!paused)
+			r.Text(width * .5f - 220,
+			       height * .5f + 44,
+			       L"부족한 동전은 이후 획득하는 동전으로 갚습니다.",
+			       Cream);
 	}
 
 	if (IsStoryOpen() && !paused)

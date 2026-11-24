@@ -108,7 +108,7 @@ int main()
 	level.m_Hp = 0;
 	assert(!level.Key('e'));
 	level.Key('r');
-	assert(level.CurrentRegion() == Region::Basin && level.m_Experience == 0);
-	puts(
-	    "PASS: 288 maps, reciprocal exits, 48 enemies/16 sectors or peaceful areas, state and edge returns.");
+	assert(level.CurrentRegion() == Region::Basin && level.m_Experience == 90 &&
+	       level.m_Hp == level.MaxHp() / 2 && level.m_RevivalDebt == 15);
+	puts("PASS: 352 maps, reciprocal exits, combat density, edge returns and paid revival.");
 }

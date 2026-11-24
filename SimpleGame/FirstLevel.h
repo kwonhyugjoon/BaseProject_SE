@@ -122,6 +122,13 @@ class FirstLevel
 		int material = -1;
 	};
 
+	enum class GearState
+	{
+		Unmade,
+		Stored,
+		Equipped
+	};
+
 	enum class StoryAction
 	{
 		None,
@@ -174,6 +181,8 @@ class FirstLevel
 	Point m_Camera = WorldTravel::NearGate, m_Aim = {1, 0};
 	int m_Level = 1, m_Experience = 0, m_Hp = 100, m_Coins = 0, m_Shards = 0;
 	std::array<int, 8> m_Materials = {};
+	std::array<GearState, 2> m_Gear = {};
+	int m_RevivalDebt = 0;
 	int m_Facing = 1, m_Kills = 0, m_FlowTarget = -1;
 	uint32_t m_Seed = 1, m_Random = 1;
 	float m_Time = 0, m_AttackCooldown = 0, m_Swing = 0, m_HitCooldown = 0, m_MessageTime = 0;
@@ -219,6 +228,9 @@ class FirstLevel
 	void DrawHud(Renderer& renderer, int width, int height, bool paused);
 	void Attack();
 	void Pickup();
+	void UseGear(size_t slot);
+	void Recover();
+	void Revive();
 	void GainExperience(int amount);
 	void Message(const std::wstring& text);
 	Point Project(Point point, int width, int height) const;
